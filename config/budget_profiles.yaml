@@ -1,0 +1,16 @@
+# Illustrative placeholders — replace after Phase 0 gives real per-call costs.
+tight:
+  max_tokens: 80000
+  max_cost_usd: 0.30
+  max_wall_seconds: 150
+  max_calls: 25
+moderate:
+  max_tokens: 200000
+  max_cost_usd: 0.75
+  max_wall_seconds: 300
+  max_calls: 60
+generous:
+  max_tokens: 400000
+  max_cost_usd: 1.50
+  max_wall_seconds: 600
+  max_calls: 100

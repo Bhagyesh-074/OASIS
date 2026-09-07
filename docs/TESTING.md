@@ -1,0 +1,32 @@
+OASIS — Test Strategy
+
+Principles
+Three constraints shape everything here. First, LLM outputs are nondeterministic, so correctness tests must never depend on model behaviour — they run against FakeLLM, a stub provider returning scripted responses keyed by prompt hash. Second, the entire test suite must pass with no API key and no network, because CI runs on every push and a suite that costs money will be disabled within a fortnight. Third, tests for the evaluation harness matter as much as tests for the system, since a bug in the statistics module silently corrupts the paper rather than crashing.
+
+Layers
+Unit tests cover pure logic with fixtures: TCE sub-scores and the weighted combination (FR-1, FR-2), RBE reduction ordering and binding-constraint identification (FR-6), admission-check verdict boundaries (FR-7), rolling-window flag logic over synthetic score sequences (FR-14), template selection per breached dimension (FR-16), replacement caps (FR-20), cosine k-NN retrieval with paraphrase and unrelated queries (FR-22), each L3 verifier including deliberate-failure fixtures (FR-13), each injection type (FR-28), and the statistics functions against distributions with analytically known bootstrap intervals and Wilcoxon results (FR-29). Target coverage on component modules is 80%; the dashboard is excluded.
+
+Contract tests enforce interfaces. Every adapter is run against a shared conformance suite asserting the five-operation contract and, critically, that capabilities() matches actual behaviour — an adapter claiming mid-run swap must demonstrate it, and the CrewAI stub must claim and return not-supported (FR-19). API request and response bodies validate against the schemas in API_SPEC.md, and a negative test asserts that a budget containing gpu or ram is rejected (FR-5).
+
+Integration tests run whole pipelines with FakeLLM. Key cases: a run under a deliberately tiny budget terminates as halted_budget and still returns best-so-far output (FR-8); a replacement executes on LangGraph with pre-swap state preserved (FR-18); a replacement is denied when handoff exceeds remaining budget and a replacement_denied_budget event is written (FR-17); an always-failing agent does not trigger unbounded swaps (FR-20).
+
+Invariant tests are the highest-value tests in the project, because each guards a claim in the paper. Call-count reconciliation asserts that gateway calls equal the sum of budget events, so no call bypasses enforcement (FR-7). Accounting reconciliation asserts run totals equal the sum of per-output costs, and that supervision-tagged tokens are included in the budget rather than excluded (FR-9). Justification completeness asserts zero rows in decision_log with empty justification (FR-24). Score separation asserts that L1, L2 and L3 rows exist independently and are never overwritten by a composite (FR-15). Leakage asserts that no calibration-split task appears in any eval-arm run and that no calibration task influenced thresholds after the freeze (FR-3). Replay purity asserts that a full replay-mode job issues exactly zero network calls (FR-30) — this test is what makes the artifact claim true.
+
+Performance tests measure orchestration compute overhead against NFR-1 on the reference machine, with the judge network latency excluded and separately reported. The assertion is on the median over 50 runs with a documented tolerance, not on a single run, because CI machines are noisy.
+
+Evaluation validity procedures
+These are not unit tests but scheduled procedures whose outputs go into the paper.
+
+Judge validation (October, gate). 150 outputs stratified across five domains and across score ranges. Bhagyesh and Netra label independently against rubric r3 without seeing judge scores. Reported: human–human raw agreement and Cohen's κ, judge–human κ per domain, and disagreement examples. Interpretation is fixed in advance — κ ≥ 0.6 supports judge-based quality claims, 0.4–0.6 requires hedged claims plus verifier corroboration, below 0.4 means judge scores become descriptive only and H1/H4 rest on verifiers. Fixing the interpretation before seeing the number is what prevents post-hoc rationalisation.
+
+Detection-recall validity. Recall is always reported per failure type and severity, never aggregated alone, and the three-layer breakdown shows which layer caught what. The expected and honest finding is that topical drift is caught almost perfectly by L1 while subtle numeric perturbation and fabricated citations are caught only by L2 or L3 — which is precisely the argument for why the original cosine-only design was insufficient. A drift-only detector and a random-flag detector are run as reference points so the reader can see how much the layered design actually adds.
+
+Ablation integrity. Each of the eight arms is asserted to have exactly the mechanisms it claims — rbe_only must produce zero replacement events, monitor_only must produce zero budget reductions — via automated post-hoc checks over the events table. An arm silently running the wrong mechanisms is the most dangerous possible bug in this project, and it would be invisible in the results.
+
+Statistical protocol. Three seeds minimum per cell, medians with 10,000-resample bootstrap 95% CIs, paired Wilcoxon signed-rank across tasks against the named reference arm, effect sizes (rank-biserial) alongside p-values, and Holm correction across the family of arm comparisons. Failed runs are re-run and the re-run count is reported; runs are never dropped silently.
+
+CI configuration
+GitHub Actions on push and PR: lint (ruff), type-check (mypy on component modules), unit and contract tests, integration tests with FakeLLM, all invariant tests, replay-purity test, coverage report. A nightly scheduled job runs the 5-task live smoke set against real pinned models with a five-dollar cap, catching provider drift early — this is the only job that spends money and it fails loudly rather than retrying. A pre-release job rebuilds the Docker image and executes the artifact's one-command reproduction from the shipped replay cache.
+
+Definition of done
+A component is done when its FR-mapped unit tests pass, it participates in a green end-to-end integration run, its decisions appear in the decision log with justifications, its costs appear in the accounting reconciliation, and its section of the paper's method description is drafted. The last condition exists because writing the method reveals design incoherence faster than any test.

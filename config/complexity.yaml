@@ -1,0 +1,6 @@
+# TCE weights and thresholds (FR-3). Calibrate ONLY on the calibration split.
+weights:
+  subtask_count: 0.4
+  skill_clusters: 0.4
+  dep_density: 0.2
+mvts_range: [1, 8]

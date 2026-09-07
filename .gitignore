@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# OASIS runtime
+.env
+data/*.db
+data/*.db-*
+artifacts/llm_calls/*.jsonl*
+artifacts/db_snapshots/*.db

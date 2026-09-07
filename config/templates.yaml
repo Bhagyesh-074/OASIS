@@ -1,0 +1,8 @@
+# Agent Template Library (RE draws substitutes from here).
+templates:
+  fast_cheap:
+    model: gpt-4o-mini-2024-07-18   # illustrative pin — substitute what you actually have access to
+    temperature: 0.2
+  accurate_slow:
+    model: gpt-4o-2024-11-20        # illustrative pin
+    temperature: 0.2
