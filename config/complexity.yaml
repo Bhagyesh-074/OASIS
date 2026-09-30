@@ -26,3 +26,11 @@ sbert_model: "sentence-transformers/all-MiniLM-L6-v2"
 
 # Cluster distance threshold for grouping subtasks into skill clusters (uncalibrated)
 cluster_distance_threshold: 0.35
+
+# Sub-score normalization bounds (FR-3)
+normalization:
+  max_subtasks: 8
+  max_skill_clusters: 8
+  min_subtasks: 1
+  min_skill_clusters: 1
+

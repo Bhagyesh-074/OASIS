@@ -64,6 +64,45 @@ class WeightsConfig(BaseModel):
         }
 
 
+class NormalizationConfig(BaseModel):
+    """Normalization constants for continuous sub-scores (FR-3).
+
+    Attributes
+    ----------
+    max_subtasks:
+        Upper bound subtask count corresponding to normalized score 1.0.
+    max_skill_clusters:
+        Upper bound cluster count corresponding to normalized score 1.0.
+    min_subtasks:
+        Lower bound subtask count corresponding to normalized score 0.0.
+    min_skill_clusters:
+        Lower bound cluster count corresponding to normalized score 0.0.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    max_subtasks: int = Field(
+        default=8,
+        ge=1,
+        description="Upper subtask normalization bound (FR-3)",
+    )
+    max_skill_clusters: int = Field(
+        default=8,
+        ge=1,
+        description="Upper skill cluster normalization bound (FR-3)",
+    )
+    min_subtasks: int = Field(
+        default=1,
+        ge=1,
+        description="Lower subtask normalization bound (FR-3)",
+    )
+    min_skill_clusters: int = Field(
+        default=1,
+        ge=1,
+        description="Lower skill cluster normalization bound (FR-3)",
+    )
+
+
 class ComplexityConfig(BaseModel):
     """Frozen configuration for TCE complexity calculation (FR-1, FR-3, NFR-4, NFR-5).
 
@@ -82,6 +121,8 @@ class ComplexityConfig(BaseModel):
         Pinned SBERT model identifier (NFR-5: no aliases such as 'latest').
     cluster_distance_threshold:
         Distance threshold for grouping subtasks into skill clusters.
+    normalization:
+        Normalization bounds for sub-scores (FR-3).
     sha256:
         Hex-encoded SHA-256 hash of the configuration file (NFR-4).
     """
@@ -115,10 +156,26 @@ class ComplexityConfig(BaseModel):
         gt=0.0,
         description="Cluster distance threshold for skill grouping",
     )
+    normalization: NormalizationConfig = Field(
+        default_factory=NormalizationConfig,
+        description="Sub-score normalization bounds loaded from configuration (FR-3)",
+    )
     sha256: str = Field(
         default="",
         description="SHA-256 digest of config file for run manifest (NFR-4)",
     )
+
+    @field_validator("normalization", mode="before")
+    @classmethod
+    def _coerce_normalization(cls, v: Any) -> NormalizationConfig:
+        """Coerce raw dictionary to validated NormalizationConfig (FR-3)."""
+        if isinstance(v, NormalizationConfig):
+            return v
+        if isinstance(v, dict):
+            return NormalizationConfig(**v)
+        if v is None:
+            return NormalizationConfig()
+        raise ValueError(f"normalization must be NormalizationConfig or dict; got {type(v).__name__}")
 
     @field_validator("weights", mode="before")
     @classmethod
@@ -261,6 +318,7 @@ def load_complexity_config(path: str | Path | None = None) -> ComplexityConfig:
         thresholds=data["thresholds"],
         sbert_model=data["sbert_model"],
         cluster_distance_threshold=float(data["cluster_distance_threshold"]),
+        normalization=data.get("normalization", {}),
         sha256=file_sha256,
     )
 
