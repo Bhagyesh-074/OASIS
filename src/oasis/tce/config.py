@@ -236,7 +236,7 @@ def load_complexity_config(path: str | Path | None = None) -> ComplexityConfig:
         raise FileNotFoundError(f"TCE complexity config not found at: {config_path}")
 
     raw_bytes = config_path.read_bytes()
-    file_sha256 = hashlib.sha256(raw_bytes).hexdigest()
+    file_sha256 = compute_complexity_config_hash(config_path)
 
     try:
         data = yaml.safe_load(raw_bytes.decode("utf-8"))
@@ -268,6 +268,10 @@ def load_complexity_config(path: str | Path | None = None) -> ComplexityConfig:
 def compute_complexity_config_hash(path: str | Path | None = None) -> str:
     """Compute the SHA-256 digest of the complexity configuration file (NFR-4).
 
+    Reads the configuration file as bytes and normalizes CRLF ("\\r\\n") to
+    LF ("\\n") before hashing so that the resulting SHA-256 digest is deterministic
+    and cross-platform consistent for run manifest reproducibility per NFR-4.
+
     Parameters
     ----------
     path:
@@ -281,4 +285,6 @@ def compute_complexity_config_hash(path: str | Path | None = None) -> str:
     config_path = _resolve_config_path(path)
     if not config_path.is_file():
         raise FileNotFoundError(f"TCE complexity config not found at: {config_path}")
-    return hashlib.sha256(config_path.read_bytes()).hexdigest()
+    raw_bytes = config_path.read_bytes()
+    normalized_bytes = raw_bytes.replace(b"\r\n", b"\n")
+    return hashlib.sha256(normalized_bytes).hexdigest()

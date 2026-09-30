@@ -63,11 +63,100 @@ def test_hash_stability(tmp_path: Path) -> None:
     raw_bytes = raw_text.encode("utf-8")
     test_yaml.write_bytes(raw_bytes)
 
-    expected_hash = hashlib.sha256(raw_bytes).hexdigest()
+    expected_hash = hashlib.sha256(raw_bytes.replace(b"\r\n", b"\n")).hexdigest()
     assert compute_complexity_config_hash(test_yaml) == expected_hash
 
     cfg = load_complexity_config(test_yaml)
     assert cfg.sha256 == expected_hash
+
+
+def test_crlf_and_lf_produce_same_hash(tmp_path: Path) -> None:
+    """NFR-4: CRLF and LF copies of identical YAML produce identical SHA-256 hashes."""
+    base_content = (
+        "version: '0.1.0-test'\n"
+        "weights:\n"
+        "  subtask_count: 0.4\n"
+        "  skill_clusters: 0.4\n"
+        "  dep_density: 0.2\n"
+        "mvts_range: [1, 8]\n"
+        "thresholds:\n"
+        "  1: 0.0\n"
+        "  2: 0.15\n"
+        "  3: 0.3\n"
+        "  4: 0.45\n"
+        "  5: 0.6\n"
+        "  6: 0.7\n"
+        "  7: 0.8\n"
+        "  8: 0.9\n"
+        "sbert_model: 'sentence-transformers/all-MiniLM-L6-v2'\n"
+        "cluster_distance_threshold: 0.35\n"
+    )
+    lf_bytes = base_content.encode("utf-8")
+    crlf_bytes = base_content.replace("\n", "\r\n").encode("utf-8")
+
+    assert b"\r\n" in crlf_bytes
+    assert b"\r\n" not in lf_bytes
+
+    lf_file = tmp_path / "config_lf.yaml"
+    crlf_file = tmp_path / "config_crlf.yaml"
+
+    lf_file.write_bytes(lf_bytes)
+    crlf_file.write_bytes(crlf_bytes)
+
+    hash_lf = compute_complexity_config_hash(lf_file)
+    hash_crlf = compute_complexity_config_hash(crlf_file)
+
+    assert hash_lf == hash_crlf
+    assert hash_lf == hashlib.sha256(lf_bytes).hexdigest()
+
+    cfg_lf = load_complexity_config(lf_file)
+    cfg_crlf = load_complexity_config(crlf_file)
+    assert cfg_lf.sha256 == hash_lf
+    assert cfg_crlf.sha256 == hash_crlf
+
+
+def test_changing_weight_changes_hash(tmp_path: Path) -> None:
+    """NFR-4: Changing one weight in YAML configuration changes the SHA-256 hash."""
+    base_yaml = (
+        "version: '0.1.0-test'\n"
+        "weights:\n"
+        "  subtask_count: 0.4\n"
+        "  skill_clusters: 0.4\n"
+        "  dep_density: 0.2\n"
+        "mvts_range: [1, 8]\n"
+        "thresholds:\n"
+        "  1: 0.0\n"
+        "  2: 0.15\n"
+        "  3: 0.3\n"
+        "  4: 0.45\n"
+        "  5: 0.6\n"
+        "  6: 0.7\n"
+        "  7: 0.8\n"
+        "  8: 0.9\n"
+        "sbert_model: 'sentence-transformers/all-MiniLM-L6-v2'\n"
+        "cluster_distance_threshold: 0.35\n"
+    )
+    # Change weights while keeping sum = 1.0
+    modified_yaml = base_yaml.replace("subtask_count: 0.4", "subtask_count: 0.5").replace(
+        "skill_clusters: 0.4", "skill_clusters: 0.3"
+    )
+
+    base_file = tmp_path / "base.yaml"
+    mod_file = tmp_path / "modified.yaml"
+
+    base_file.write_text(base_yaml, encoding="utf-8")
+    mod_file.write_text(modified_yaml, encoding="utf-8")
+
+    hash_base = compute_complexity_config_hash(base_file)
+    hash_mod = compute_complexity_config_hash(mod_file)
+
+    assert hash_base != hash_mod
+
+    cfg_base = load_complexity_config(base_file)
+    cfg_mod = load_complexity_config(mod_file)
+    assert cfg_base.sha256 != cfg_mod.sha256
+    assert cfg_base.sha256 == hash_base
+    assert cfg_mod.sha256 == hash_mod
 
 
 def test_weights_validation_negative() -> None:
