@@ -23,15 +23,15 @@ class SubScores(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    subtask_count: float = Field(
+    subtask_count: int = Field(
         ...,
         description="Candidate subtask count (FR-2)",
-        ge=0.0,
+        ge=0,
     )
-    skill_clusters: float = Field(
+    skill_clusters: int = Field(
         ...,
         description="Skill-diversity cluster count (FR-2)",
-        ge=0.0,
+        ge=0,
     )
     dep_density: float = Field(
         ...,

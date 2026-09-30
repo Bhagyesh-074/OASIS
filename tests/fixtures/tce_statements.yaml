@@ -1,0 +1,139 @@
+# 20 benchmark statements across 5 domains for TCE evaluation (FR-1, FR-2, FR-3)
+# Domains: code_generation, research_qa, quant_analysis, support_triage, content_generation
+# Complexity levels: low, medium, medium_high, high
+
+statements:
+  # -------------------------------------------------------------------------
+  # Domain: code_generation
+  # -------------------------------------------------------------------------
+  - id: "code_01"
+    domain: "code_generation"
+    complexity_level: "low"
+    rank: 1
+    statement: "Write a python function to check if a string is a palindrome."
+
+  - id: "code_02"
+    domain: "code_generation"
+    complexity_level: "medium"
+    rank: 2
+    statement: "Parse the incoming JSON payload, and write valid records to SQLite."
+
+  - id: "code_03"
+    domain: "code_generation"
+    complexity_level: "medium_high"
+    rank: 3
+    statement: "1. Build an asynchronous web scraper for API documentation.\n2. Extract endpoints and request parameters.\n3. Generate OpenAPI 3.0 specification files."
+
+  - id: "code_04"
+    domain: "code_generation"
+    complexity_level: "high"
+    rank: 4
+    statement: "First design a distributed key-value store architecture. Next implement the Raft consensus module with leader election. Then add persistent write-ahead logging and snapshotting. Finally benchmark the cluster under network partition failures."
+
+  # -------------------------------------------------------------------------
+  # Domain: research_qa
+  # -------------------------------------------------------------------------
+  - id: "research_01"
+    domain: "research_qa"
+    complexity_level: "low"
+    rank: 1
+    statement: "Summarize this research paper abstract on transformer architectures."
+
+  - id: "research_02"
+    domain: "research_qa"
+    complexity_level: "medium"
+    rank: 2
+    statement: "Compare the performance of BERT and RoBERTa on GLUE benchmarks, and highlight the key training differences."
+
+  - id: "research_03"
+    domain: "research_qa"
+    complexity_level: "medium_high"
+    rank: 3
+    statement: "1. Search Europe PMC for clinical trials on mRNA vaccines.\n2. Extract reported efficacy rates and sample sizes.\n3. Synthesize the findings into a comparison matrix."
+
+  - id: "research_04"
+    domain: "research_qa"
+    complexity_level: "high"
+    rank: 4
+    statement: "Conduct a systematic literature review on post-quantum cryptographic algorithms. First query arXiv and PubMed for candidate lattice-based schemes. Next extract security proofs and benchmark performance metrics. Then cross-reference known side-channel attacks against each scheme. Finally produce an exhaustive evaluation report with cryptographic recommendations."
+
+  # -------------------------------------------------------------------------
+  # Domain: quant_analysis
+  # -------------------------------------------------------------------------
+  - id: "quant_01"
+    domain: "quant_analysis"
+    complexity_level: "low"
+    rank: 1
+    statement: "Calculate the arithmetic mean and standard deviation of daily stock returns."
+
+  - id: "quant_02"
+    domain: "quant_analysis"
+    complexity_level: "medium"
+    rank: 2
+    statement: "Load historical ticker prices, and compute the annualized Sharpe ratio."
+
+  - id: "quant_03"
+    domain: "quant_analysis"
+    complexity_level: "medium_high"
+    rank: 3
+    statement: "1. Fetch macroeconomic indicators from the central bank API.\n2. Clean and align time series by business days.\n3. Fit an ARIMA forecasting model with diagnostic residual tests."
+
+  - id: "quant_04"
+    domain: "quant_analysis"
+    complexity_level: "high"
+    rank: 4
+    statement: "First aggregate tick-level order book data from multiple exchanges. Next construct market microstructure features including bid-ask spread and order flow imbalance. Then train a gradient boosted model to predict high-frequency price movements. Finally evaluate model PnL under realistic transaction cost and slippage models."
+
+  # -------------------------------------------------------------------------
+  # Domain: support_triage
+  # -------------------------------------------------------------------------
+  - id: "support_01"
+    domain: "support_triage"
+    complexity_level: "low"
+    rank: 1
+    statement: "Draft a polite response informing the customer how to reset their account password."
+
+  - id: "support_02"
+    domain: "support_triage"
+    complexity_level: "medium"
+    rank: 2
+    statement: "Review the incoming customer complaint, and assign the ticket to the billing department."
+
+  - id: "support_03"
+    domain: "support_triage"
+    complexity_level: "medium_high"
+    rank: 3
+    statement: "1. Classify incoming support tickets by urgency and product category.\n2. Check SLA breach deadlines.\n3. Dispatch high-priority incident notifications to on-call engineering."
+
+  - id: "support_04"
+    domain: "support_triage"
+    complexity_level: "high"
+    rank: 4
+    statement: "First ingest support tickets from Zendesk and Slack channels. Next analyze customer sentiment and extract technical error codes using NLP. Then correlate reported issues with active service health incidents in PagerDuty. Finally generate prioritized escalation summaries and update affected customer status dashboards."
+
+  # -------------------------------------------------------------------------
+  # Domain: content_generation
+  # -------------------------------------------------------------------------
+  - id: "content_01"
+    domain: "content_generation"
+    complexity_level: "low"
+    rank: 1
+    statement: "Write a short social media post announcing our new product feature."
+
+  - id: "content_02"
+    domain: "content_generation"
+    complexity_level: "medium"
+    rank: 2
+    statement: "Write a blog post introducing the new product feature, and draft a call-to-action for readers."
+
+  - id: "content_03"
+    domain: "content_generation"
+    complexity_level: "medium_high"
+    rank: 3
+    statement: "Draft a comprehensive product release newsletter. Write technical release notes for developers, compose an executive summary for leadership, and create promotional copy for marketing."
+
+  - id: "content_04"
+    domain: "content_generation"
+    complexity_level: "high"
+    rank: 4
+    statement: "First research target customer personas and competitor positioning. Next develop an integrated multi-channel marketing narrative across web, email, and social media. Then draft technical whitepapers, case studies, and product demo scripts. Finally coordinate review across design, legal, and product teams to assemble the full launch campaign."
