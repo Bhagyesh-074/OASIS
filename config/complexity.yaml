@@ -1,6 +1,28 @@
 # TCE weights and thresholds (FR-3). Calibrate ONLY on the calibration split.
+# Note: Uncalibrated placeholder configuration for development (Phase 2).
+version: "0.1.0-uncalibrated"
+
 weights:
   subtask_count: 0.4
   skill_clusters: 0.4
   dep_density: 0.2
+
 mvts_range: [1, 8]
+
+# Monotonic score thresholds mapping composite complexity score to integer MVTS (uncalibrated)
+# Keys are integer team sizes (1..8); values are the lower score boundaries.
+thresholds:
+  1: 0.00
+  2: 0.15
+  3: 0.30
+  4: 0.45
+  5: 0.60
+  6: 0.70
+  7: 0.80
+  8: 0.90
+
+# SBERT model identifier (NFR-5: pinned model version, no aliases like latest)
+sbert_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+# Cluster distance threshold for grouping subtasks into skill clusters (uncalibrated)
+cluster_distance_threshold: 0.35
