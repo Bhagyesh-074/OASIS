@@ -91,7 +91,9 @@ def test_mbpp_transformation(fixtures_dir: Path) -> None:
     raw_items = load_raw_from_fixture(fixtures_dir / "mbpp_sample.jsonl")
     assert len(raw_items) >= 2
 
-    task_dict = transform_raw_to_task(raw_items[0], source="mbpp", domain="code_generation")
+    task_dict = transform_raw_to_task(
+        raw_items[0], source="mbpp", domain="code_generation"
+    )
     assert task_dict["task_id"] == "mbpp_0001"
     assert task_dict["domain"] == "code_generation"
     assert task_dict["source"] == "mbpp"
@@ -105,7 +107,9 @@ def test_humaneval_transformation(fixtures_dir: Path) -> None:
     raw_items = load_raw_from_fixture(fixtures_dir / "humaneval_sample.jsonl")
     assert len(raw_items) >= 2
 
-    task_dict = transform_raw_to_task(raw_items[0], source="humaneval", domain="code_generation")
+    task_dict = transform_raw_to_task(
+        raw_items[0], source="humaneval", domain="code_generation"
+    )
     assert task_dict["task_id"] == "humaneval_0"
     assert task_dict["domain"] == "code_generation"
     assert task_dict["source"] == "humaneval"
@@ -120,9 +124,13 @@ def test_hotpotqa_transformation(fixtures_dir: Path) -> None:
     raw_items = load_raw_from_fixture(fixtures_dir / "hotpotqa_sample.jsonl")
     assert len(raw_items) >= 2
 
-    task_dict = transform_raw_to_task(raw_items[0], source="hotpotqa", domain="research_qa")
-    assert task_dict["task_id"].startswith("hotpotqa_")
+    task_dict = transform_raw_to_task(
+        raw_items[0], source="hotpotqa", domain="research_qa"
+    )
+    assert task_dict["task_id"] == "hotpotqa_5a7a0b3e5542990178904833"
     assert task_dict["domain"] == "research_qa"
+    assert task_dict["source"] == "hotpotqa"
+    assert task_dict["source_ref"] == "5a7a0b3e5542990178904833"
     assert task_dict["verifier_type"] == "citation_resolve"
     spec = json.loads(task_dict["verifier_spec"])
     assert spec["expected_answer"] == "yes"
@@ -134,9 +142,13 @@ def test_gsm8k_transformation_and_numeric_extraction(fixtures_dir: Path) -> None
     raw_items = load_raw_from_fixture(fixtures_dir / "gsm8k_sample.jsonl")
     assert len(raw_items) >= 2
 
-    task_dict = transform_raw_to_task(raw_items[0], source="gsm8k", domain="quant_analysis")
-    assert task_dict["task_id"] == "gsm8k_gsm8k_0001"
+    task_dict = transform_raw_to_task(
+        raw_items[0], source="gsm8k", domain="quant_analysis"
+    )
+    assert task_dict["task_id"] == "gsm8k_73429d5629"
     assert task_dict["domain"] == "quant_analysis"
+    assert task_dict["source"] == "gsm8k"
+    assert task_dict["source_ref"] == "73429d5629"
     assert task_dict["verifier_type"] == "numeric_consistency"
     spec = json.loads(task_dict["verifier_spec"])
     assert spec["expected_value"] == 72.0
@@ -148,6 +160,91 @@ def test_gsm8k_transformation_and_numeric_extraction(fixtures_dir: Path) -> None
     assert extract_gsm8k_numeric("Loss is -15. #### -15") == -15.0
     assert extract_gsm8k_numeric("No marker here but ends with 99") == 99.0
     assert extract_gsm8k_numeric("No numbers at all") is None
+
+
+def test_different_sources_never_produce_same_id(fixtures_dir: Path) -> None:
+    """Two different sources must never produce identical task IDs."""
+    # 1. Collision resistance test: different sources with overlapping raw identifiers
+    mbpp_task = transform_raw_to_task(
+        {
+            "task_id": 1,
+            "text": "mbpp problem",
+            "code": "def f(): pass",
+            "test_list": ["assert True"],
+        },
+        source="mbpp",
+        domain="code_generation",
+    )
+    humaneval_task = transform_raw_to_task(
+        {
+            "task_id": "HumanEval/1",
+            "prompt": "he problem",
+            "canonical_solution": "pass",
+            "test": "",
+            "entry_point": "f",
+        },
+        source="humaneval",
+        domain="code_generation",
+    )
+    hotpotqa_task = transform_raw_to_task(
+        {"_id": "1", "question": "hotpot problem", "answer": "yes"},
+        source="hotpotqa",
+        domain="research_qa",
+    )
+    gsm8k_task = transform_raw_to_task(
+        {"question": "gsm problem", "answer": "1 #### 1"},
+        source="gsm8k",
+        domain="quant_analysis",
+    )
+    authored_task = transform_raw_to_task(
+        {"task_id": "1", "statement": "authored problem"},
+        source="authored",
+        domain="support_triage",
+    )
+
+    generated_ids = [
+        mbpp_task["task_id"],
+        humaneval_task["task_id"],
+        hotpotqa_task["task_id"],
+        gsm8k_task["task_id"],
+        authored_task["task_id"],
+    ]
+    # Verify strict uniqueness across distinct sources
+    assert len(generated_ids) == len(set(generated_ids))
+
+    # Verify each ID is properly prefixed by its own source
+    assert mbpp_task["task_id"] == "mbpp_0001"
+    assert humaneval_task["task_id"] == "humaneval_1"
+    assert hotpotqa_task["task_id"] == "hotpotqa_1"
+    assert gsm8k_task["task_id"].startswith("gsm8k_")
+    assert authored_task["task_id"] == "authored_1"
+
+    # 2. Verify disjointness across all sample fixture datasets
+    mbpp_raw = load_raw_from_fixture(fixtures_dir / "mbpp_sample.jsonl")
+    he_raw = load_raw_from_fixture(fixtures_dir / "humaneval_sample.jsonl")
+    hp_raw = load_raw_from_fixture(fixtures_dir / "hotpotqa_sample.jsonl")
+    gsm_raw = load_raw_from_fixture(fixtures_dir / "gsm8k_sample.jsonl")
+
+    mbpp_ids = {
+        transform_raw_to_task(r, "mbpp", "code_generation")["task_id"] for r in mbpp_raw
+    }
+    he_ids = {
+        transform_raw_to_task(r, "humaneval", "code_generation")["task_id"]
+        for r in he_raw
+    }
+    hp_ids = {
+        transform_raw_to_task(r, "hotpotqa", "research_qa")["task_id"] for r in hp_raw
+    }
+    gsm_ids = {
+        transform_raw_to_task(r, "gsm8k", "quant_analysis")["task_id"] for r in gsm_raw
+    }
+
+    assert mbpp_ids.isdisjoint(he_ids)
+    assert mbpp_ids.isdisjoint(hp_ids)
+    assert mbpp_ids.isdisjoint(gsm_ids)
+    assert he_ids.isdisjoint(hp_ids)
+    assert he_ids.isdisjoint(gsm_ids)
+    assert hp_ids.isdisjoint(gsm_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -173,20 +270,24 @@ def test_stratification_by_domain() -> None:
     # 20 tasks per domain across 2 domains = 40 tasks total
     tasks: list[dict[str, Any]] = []
     for i in range(20):
-        tasks.append({
-            "task_id": f"code_{i:02d}",
-            "domain": "code_generation",
-            "source": "mbpp",
-            "statement": f"Code task {i}",
-            "created_at": "2026-09-01T00:00:00Z",
-        })
-        tasks.append({
-            "task_id": f"qa_{i:02d}",
-            "domain": "research_qa",
-            "source": "hotpotqa",
-            "statement": f"QA task {i}",
-            "created_at": "2026-09-01T00:00:00Z",
-        })
+        tasks.append(
+            {
+                "task_id": f"code_{i:02d}",
+                "domain": "code_generation",
+                "source": "mbpp",
+                "statement": f"Code task {i}",
+                "created_at": "2026-09-01T00:00:00Z",
+            }
+        )
+        tasks.append(
+            {
+                "task_id": f"qa_{i:02d}",
+                "domain": "research_qa",
+                "source": "hotpotqa",
+                "statement": f"QA task {i}",
+                "created_at": "2026-09-01T00:00:00Z",
+            }
+        )
 
     # Calibration fraction: 0.25 (5 calibration, 15 eval per domain)
     records = assign_splits(tasks, calibration_fraction=0.25, seed=42)
@@ -306,14 +407,16 @@ def test_jsonl_output_and_adapter(tmp_path: Path, fixtures_dir: Path) -> None:
 def test_cli_all_with_fixtures(tmp_path: Path, fixtures_dir: Path) -> None:
     """CLI python -m oasis.bench.ingest --all runs cleanly with fixture option."""
     out_file = tmp_path / "cli_tasks.jsonl"
-    exit_code = main([
-        "--all",
-        "--use-fixtures",
-        "--fixtures-dir",
-        str(fixtures_dir),
-        "--output",
-        str(out_file),
-    ])
+    exit_code = main(
+        [
+            "--all",
+            "--use-fixtures",
+            "--fixtures-dir",
+            str(fixtures_dir),
+            "--output",
+            str(out_file),
+        ]
+    )
     assert exit_code == 0
     assert out_file.exists()
 

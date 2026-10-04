@@ -9,6 +9,7 @@ and exports TaskRecord rows via JSONL / database adapter.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import re
@@ -96,16 +97,21 @@ def transform_raw_to_task(
         Dictionary of TaskRecord keyword arguments (excluding 'split').
     """
     if source == "mbpp":
-        source_ref = str(raw.get("task_id", idx))
+        if "task_id" not in raw:
+            raise KeyError("MBPP raw record missing native 'task_id'")
+        native_id = raw["task_id"]
+        source_ref = str(native_id)
         try:
-            task_id = f"mbpp_{int(source_ref):04d}"
-        except ValueError:
+            task_id = f"mbpp_{int(native_id):04d}"
+        except (ValueError, TypeError):
             task_id = f"mbpp_{source_ref}"
         statement = str(raw.get("text", raw.get("prompt", ""))).strip()
         code = str(raw.get("code", "")).strip()
         test_list = raw.get("test_list", [])
         test_setup = raw.get("test_setup_code", "")
-        test_code = "\n".join(test_list) if isinstance(test_list, list) else str(test_list)
+        test_code = (
+            "\n".join(test_list) if isinstance(test_list, list) else str(test_list)
+        )
         spec = json.dumps({"test_code": test_code, "test_setup_code": test_setup})
         return {
             "task_id": task_id,
@@ -121,9 +127,17 @@ def transform_raw_to_task(
         }
 
     elif source == "humaneval":
-        raw_id = str(raw.get("task_id", idx))
-        clean_id = raw_id.replace("/", "_").lower()
-        task_id = clean_id if clean_id.startswith("humaneval") else f"humaneval_{clean_id}"
+        if "task_id" not in raw:
+            raise KeyError("HumanEval raw record missing native 'task_id'")
+        raw_id = str(raw["task_id"])
+        source_ref = raw_id
+        if "/" in raw_id:
+            num_part = raw_id.split("/")[-1]
+        elif raw_id.lower().startswith("humaneval_"):
+            num_part = raw_id.split("_", 1)[1]
+        else:
+            num_part = raw_id
+        task_id = f"humaneval_{num_part}"
         statement = str(raw.get("prompt", "")).strip()
         canonical_solution = str(raw.get("canonical_solution", "")).strip()
         test = str(raw.get("test", "")).strip()
@@ -143,12 +157,17 @@ def transform_raw_to_task(
         }
 
     elif source == "hotpotqa":
-        source_ref = str(raw.get("id", f"{idx:04d}"))
+        native_id = raw.get("_id") or raw.get("id")
+        if not native_id:
+            raise KeyError("HotpotQA raw record missing native '_id' or 'id'")
+        source_ref = str(native_id)
         task_id = f"hotpotqa_{source_ref}"
         statement = str(raw.get("question", "")).strip()
         answer = str(raw.get("answer", "")).strip()
         supporting_facts = raw.get("supporting_facts", {})
-        spec = json.dumps({"expected_answer": answer, "supporting_facts": supporting_facts})
+        spec = json.dumps(
+            {"expected_answer": answer, "supporting_facts": supporting_facts}
+        )
         return {
             "task_id": task_id,
             "domain": domain,
@@ -163,9 +182,13 @@ def transform_raw_to_task(
         }
 
     elif source == "gsm8k":
-        source_ref = str(raw.get("id", f"{idx:04d}"))
-        task_id = f"gsm8k_{source_ref}"
         statement = str(raw.get("question", "")).strip()
+        if not statement:
+            raise KeyError("GSM8K raw record missing 'question'")
+        norm_q = " ".join(statement.split())
+        native_id = hashlib.sha256(norm_q.encode("utf-8")).hexdigest()[:10]
+        task_id = f"gsm8k_{native_id}"
+        source_ref = native_id
         answer = str(raw.get("answer", "")).strip()
         expected_val = extract_gsm8k_numeric(answer)
         spec = json.dumps({"expected_value": expected_val, "tolerance": 1e-4})
@@ -184,9 +207,23 @@ def transform_raw_to_task(
 
     else:
         # Fallback for generic or authored sources
-        source_ref = str(raw.get("id", raw.get("task_id", idx)))
+        native_id = raw.get("task_id") or raw.get("id") or raw.get("_id")
+        if not native_id:
+            stmt = str(
+                raw.get("statement", raw.get("prompt", raw.get("question", "")))
+            ).strip()
+            if stmt:
+                norm_stmt = " ".join(stmt.split())
+                native_id = hashlib.sha256(norm_stmt.encode("utf-8")).hexdigest()[:10]
+            else:
+                raise KeyError(
+                    f"Task record for source '{source}' missing native identifier"
+                )
+        source_ref = str(native_id)
         task_id = f"{source}_{source_ref}"
-        statement = str(raw.get("statement", raw.get("prompt", raw.get("question", "")))).strip()
+        statement = str(
+            raw.get("statement", raw.get("prompt", raw.get("question", "")))
+        ).strip()
         ref = raw.get("reference_answer", raw.get("answer", raw.get("code", None)))
         return {
             "task_id": task_id,
@@ -351,7 +388,11 @@ def sample_raw_data(
 
     # Sort stably by available identifier or json string
     def sort_key(item: dict[str, Any]) -> str:
-        return str(item.get("task_id", item.get("id", json.dumps(item, sort_keys=True))))
+        for k in ("task_id", "_id", "id", "question"):
+            val = item.get(k)
+            if val is not None:
+                return str(val)
+        return json.dumps(item, sort_keys=True)
 
     sorted_items = sorted(raw_items, key=sort_key)
     if len(sorted_items) <= count:
@@ -696,7 +737,11 @@ def ingest_benchmarks(
 
     for domain in target_domains:
         allocation = cfg.source_allocation.get(domain, {})
-        domain_total = count_override if count_override is not None else cfg.domain_counts.get(domain, 20)
+        domain_total = (
+            count_override
+            if count_override is not None
+            else cfg.domain_counts.get(domain, 20)
+        )
 
         # If allocation has specific counts, scale proportionally if count_override passed
         for source, src_target in allocation.items():
@@ -715,7 +760,9 @@ def ingest_benchmarks(
 
             # Seeded deterministic sampling
             src_seed = seed + abs(hash(source)) % 10_000
-            sampled_items = sample_raw_data(raw_items, count=sample_count, seed=src_seed)
+            sampled_items = sample_raw_data(
+                raw_items, count=sample_count, seed=src_seed
+            )
 
             for idx, raw in enumerate(sampled_items):
                 task_dict = transform_raw_to_task(
@@ -760,7 +807,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--domain",
         type=str,
-        choices=["code_generation", "research_qa", "quant_analysis", "support_triage", "content_generation"],
+        choices=[
+            "code_generation",
+            "research_qa",
+            "quant_analysis",
+            "support_triage",
+            "content_generation",
+        ],
         help="Ingest a specific task domain.",
     )
     parser.add_argument(
