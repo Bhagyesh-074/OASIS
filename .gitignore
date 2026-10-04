@@ -15,3 +15,7 @@ data/*.db
 data/*.db-*
 artifacts/llm_calls/*.jsonl*
 artifacts/db_snapshots/*.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

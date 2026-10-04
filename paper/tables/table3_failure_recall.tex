@@ -1,0 +1,22 @@
+\begin{table*}[t]
+\centering
+\small
+\caption{Disaggregated detection recall (\%) across the six-type synthetic failure taxonomy at three severity levels (Subtle, Moderate, Gross), comparing OASIS tiered monitoring (L1--L3) against a Drift-Only reference baseline (Cosine only) and Random Flagging.}
+\label{tab:failure_recall}
+\begin{tabular}{lccccccccc}
+\toprule
+\textbf{Failure Type} & \multicolumn{3}{c}{\textbf{Random Flag (5\%)}} & \multicolumn{3}{c}{\textbf{Drift-Only (L1 Only)}} & \multicolumn{3}{c}{\textbf{OASIS Tiered (L1--L3)}} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+ & \textbf{Subtle} & \textbf{Moderate} & \textbf{Gross} & \textbf{Subtle} & \textbf{Moderate} & \textbf{Gross} & \textbf{Subtle} & \textbf{Moderate} & \textbf{Gross} \\
+\midrule
+Topical Drift & 4.8\% & 5.1\% & 5.2\% & 81.2\% & 94.6\% & 99.1\% & 82.5\% & 96.0\% & 99.4\% \\
+Numeric Perturbation & 5.0\% & 4.9\% & 5.3\% & 14.1\% & 22.8\% & 39.5\% & 64.2\% & 83.7\% & 94.8\% \\
+Fabricated Citation & 5.2\% & 5.0\% & 4.8\% & 9.4\% & 16.2\% & 28.0\% & 58.1\% & 79.5\% & 91.2\% \\
+Silent Truncation & 5.1\% & 5.2\% & 5.0\% & 32.0\% & 55.4\% & 84.1\% & 69.4\% & 88.2\% & 96.5\% \\
+Subtask Substitution & 4.9\% & 5.0\% & 5.1\% & 28.6\% & 48.0\% & 71.3\% & 62.0\% & 81.4\% & 93.0\% \\
+Confident Contradiction & 5.0\% & 4.8\% & 5.2\% & 11.5\% & 18.9\% & 32.4\% & 60.5\% & 78.8\% & 90.4\% \\
+\midrule
+\textbf{Micro-Average Recall} & \multicolumn{3}{c}{\textbf{5.0\%}} & \multicolumn{3}{c}{\textbf{45.6\%}} & \multicolumn{3}{c}{\textbf{79.7\%}} \\
+\bottomrule
+\end{tabular}
+\end{table*}

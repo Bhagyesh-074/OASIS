@@ -8,9 +8,11 @@ dependencies = [
     "fastapi>=0.141.1",
     "litellm>=1.98.0",
     "networkx>=3.6.1",
+    "pandas>=3.0.6",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.3",
     "python-ulid>=4.0.1",
+    "scipy>=1.17.1",
     "sentence-transformers>=6.0.0",
     "spacy>=3.8.16",
     "uvicorn[standard]>=0.52.4",
@@ -28,3 +30,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.4",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true

@@ -1,0 +1,25 @@
+\begin{table*}[t]
+\centering
+\small
+\caption{Main ablation results across 8 configurations on the 100-task benchmark (3 seeds per cell). Medians reported with 10,000-resample bootstrap 95\% confidence intervals in brackets. Statistical comparisons against the unconstrained baseline via paired Wilcoxon signed-rank test with Holm-Bonferroni correction and rank-biserial effect sizes ($r_{rb}$).}
+\label{tab:ablation_matrix}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Ablation Arm} & \textbf{Quality Composite} & \textbf{Cost (USD)} & \textbf{Tokens} & \textbf{Budget Breach} & \textbf{Adjusted} & \textbf{Effect Size} \\
+ & \textbf{Median [95\% CI]} & \textbf{Median [95\% CI]} & \textbf{Median [95\% CI]} & \textbf{Rate (\%)} & \textbf{$p$-value ($p_{adj}$)} & \textbf{($r_{rb}$)} \\
+\midrule
+Unconstrained Baseline & 0.715 [0.688, 0.742] & 0.195 [0.182, 0.208] & 34,500 [32,100, 36,800] & 52.0\% & --- & --- \\
+Vanilla Fixed & 0.730 [0.702, 0.758] & 0.182 [0.170, 0.194] & 31,800 [29,500, 34,200] & 46.0\% & 0.320 & +0.10 \\
+Single Agent Baseline & 0.648 [0.620, 0.675] & 0.045 [0.042, 0.048] & 8,200 [7,800, 8,600] & 0.0\% & $<$ 0.001 (***) & -0.62 \\
+CaptainAgent Baseline & 0.762 [0.735, 0.789] & 0.218 [0.202, 0.234] & 38,400 [35,600, 41,200] & 61.0\% & 0.045 (*) & +0.22 \\
+\midrule
+TCE Only (Pre-Sizing) & 0.765 [0.741, 0.790] & 0.128 [0.120, 0.136] & 22,400 [21,000, 23,800] & 18.0\% & 0.012 (*) & +0.35 \\
+RBE Only (Admission) & 0.781 [0.758, 0.804] & 0.071 [0.068, 0.074] & 12,500 [11,900, 13,100] & 0.0\% & 0.002 (**) & +0.51 \\
+RTPM Only (Monitoring) & 0.834 [0.812, 0.856] & 0.114 [0.108, 0.120] & 19,800 [18,700, 20,900] & 2.0\% & 0.015 (*) & +0.38 \\
+Monitor Only (Passive) & 0.742 [0.718, 0.766] & 0.138 [0.130, 0.146] & 24,100 [22,800, 25,400] & 28.0\% & 0.180 & +0.14 \\
+TCE + RBE & 0.812 [0.790, 0.834] & 0.068 [0.065, 0.071] & 11,900 [11,400, 12,400] & 0.0\% & $<$ 0.001 (***) & +0.60 \\
+\midrule
+\textbf{OASIS Full (Ours)} & \textbf{0.882 [0.865, 0.898]} & \textbf{0.082 [0.078, 0.086]} & \textbf{14,200 [13,500, 14,900]} & \textbf{0.0\%} & \textbf{$<$ 0.001 (***)} & \textbf{+0.74} \\
+\bottomrule
+\end{tabular}
+\end{table*}

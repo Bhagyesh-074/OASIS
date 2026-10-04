@@ -1,0 +1,95 @@
+{
+  "arms": {
+    "full": {
+      "total_runs": 5,
+      "quality": {
+        "median": 0.88,
+        "ci_95": [
+          0.88,
+          0.88
+        ]
+      },
+      "cost_usd": {
+        "median": 0.001,
+        "ci_95": [
+          0.001,
+          0.001
+        ]
+      },
+      "tokens": {
+        "median": 400.0,
+        "ci_95": [
+          400.0,
+          400.0
+        ]
+      },
+      "wall_ms": {
+        "median": 4.0,
+        "ci_95": [
+          3.0,
+          6.0
+        ]
+      },
+      "supervision_share": {
+        "median": 0.0,
+        "ci_95": [
+          0.0,
+          0.0
+        ]
+      },
+      "compliance_rate": 1.0,
+      "replacements": 0,
+      "replacements_denied": 0,
+      "replacement_suppression_rate": 0.0,
+      "wilcoxon_p_value": 1.0,
+      "effect_size": 0.0,
+      "holm_adjusted_p_value": 1.0
+    },
+    "vanilla_fixed": {
+      "total_runs": 5,
+      "quality": {
+        "median": 0.88,
+        "ci_95": [
+          0.88,
+          0.88
+        ]
+      },
+      "cost_usd": {
+        "median": 0.003,
+        "ci_95": [
+          0.003,
+          0.003
+        ]
+      },
+      "tokens": {
+        "median": 1200.0,
+        "ci_95": [
+          1200.0,
+          1200.0
+        ]
+      },
+      "wall_ms": {
+        "median": 4.0,
+        "ci_95": [
+          4.0,
+          7.0
+        ]
+      },
+      "supervision_share": {
+        "median": 0.0,
+        "ci_95": [
+          0.0,
+          0.0
+        ]
+      },
+      "compliance_rate": 1.0,
+      "replacements": 0,
+      "replacements_denied": 0,
+      "replacement_suppression_rate": 0.0,
+      "wilcoxon_p_value": null,
+      "effect_size": null,
+      "holm_adjusted_p_value": null
+    }
+  },
+  "reference_arm": "vanilla_fixed"
+}
