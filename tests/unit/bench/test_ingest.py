@@ -21,7 +21,7 @@ from oasis.bench.ingest import (
     transform_raw_to_task,
     write_to_db_adapter,
 )
-from oasis.bench.models import CONTEXT_MARKER, TaskRecord
+from oasis.bench.models import CONTEXT_MARKER, CitationResolveSpec, TaskRecord
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ def test_humaneval_transformation(fixtures_dir: Path) -> None:
 
 
 def test_hotpotqa_transformation(fixtures_dir: Path) -> None:
-    """HotpotQA raw records map to research_qa domain with citation_resolve verifier."""
+    """HotpotQA raw records map to research_qa domain with distractor statement and citation_resolve verifier (FR-13, FR-3)."""
     raw_items = load_raw_from_fixture(fixtures_dir / "hotpotqa_sample.jsonl")
     assert len(raw_items) >= 2
 
@@ -138,9 +138,172 @@ def test_hotpotqa_transformation(fixtures_dir: Path) -> None:
     assert task_dict["source"] == "hotpotqa"
     assert task_dict["source_ref"] == "5a7a0b3e5542990178904833"
     assert task_dict["verifier_type"] == "citation_resolve"
-    spec = json.loads(task_dict["verifier_spec"])
-    assert spec["expected_answer"] == "yes"
-    assert "supporting_facts" in spec
+
+    # Statement must contain instruction line, question, CONTEXT_MARKER, and all context paragraphs
+    instruction = "Answer using only the context below and cite the titles of the paragraphs you used."
+    assert task_dict["statement"].startswith(instruction)
+    assert raw_items[0]["question"] in task_dict["statement"]
+    assert CONTEXT_MARKER in task_dict["statement"]
+
+    # Validate verifier_spec with CitationResolveSpec
+    spec_dict = json.loads(task_dict["verifier_spec"])
+    assert spec_dict["expected_answer"] == "yes"
+    assert spec_dict["supporting_titles"] == ["Scott Derrickson", "Ed Wood"]
+    assert spec_dict["context_titles"] == [
+        "Scott Derrickson",
+        "Ed Wood",
+        "Doctor Strange (film)",
+    ]
+
+    spec_obj = CitationResolveSpec.model_validate_json(task_dict["verifier_spec"])
+    assert spec_obj.expected_answer == "yes"
+    assert spec_obj.supporting_titles == ["Scott Derrickson", "Ed Wood"]
+    assert spec_obj.context_titles == [
+        "Scott Derrickson",
+        "Ed Wood",
+        "Doctor Strange (film)",
+    ]
+
+    # Every context title must appear in statement as "[Title]"
+    for title in spec_obj.context_titles:
+        assert f"[{title}]" in task_dict["statement"]
+
+    # Paragraphs appear in dataset's own order
+    pos_marker = task_dict["statement"].index(CONTEXT_MARKER)
+    pos1 = task_dict["statement"].index("[Scott Derrickson]")
+    pos2 = task_dict["statement"].index("[Ed Wood]")
+    pos3 = task_dict["statement"].index("[Doctor Strange (film)]")
+    assert pos_marker < pos1 < pos2 < pos3
+
+
+def test_hotpotqa_validation_and_rejection() -> None:
+    """CitationResolveSpec and HotpotQA loader reject records with empty answer or no supporting titles (FR-13, FR-3)."""
+    # 1. Pydantic CitationResolveSpec model direct validations
+    with pytest.raises(ValidationError):
+        CitationResolveSpec(
+            expected_answer="",
+            context_titles=["T1"],
+            supporting_titles=["T1"],
+        )
+
+    with pytest.raises(ValidationError):
+        CitationResolveSpec(
+            expected_answer="   ",
+            context_titles=["T1"],
+            supporting_titles=["T1"],
+        )
+
+    with pytest.raises(ValidationError):
+        CitationResolveSpec(
+            expected_answer="valid answer",
+            context_titles=["T1"],
+            supporting_titles=[],
+        )
+
+    with pytest.raises(ValidationError):
+        CitationResolveSpec(
+            expected_answer="valid answer",
+            context_titles=["T1"],
+            supporting_titles=["", "  "],
+        )
+
+    # 2. transform_raw_to_task rejection of empty expected_answer
+    with pytest.raises(ValueError, match="Invalid citation_resolve spec"):
+        transform_raw_to_task(
+            {
+                "_id": "empty_ans",
+                "question": "Some question?",
+                "answer": "",
+                "supporting_facts": {"title": ["Doc 1"], "sent_id": [0]},
+                "context": {"title": ["Doc 1"], "sentences": [["Some text."]]},
+            },
+            source="hotpotqa",
+            domain="research_qa",
+        )
+
+    # 3. transform_raw_to_task rejection of whitespace expected_answer
+    with pytest.raises(ValueError, match="Invalid citation_resolve spec"):
+        transform_raw_to_task(
+            {
+                "_id": "space_ans",
+                "question": "Some question?",
+                "answer": "   \n\t  ",
+                "supporting_facts": {"title": ["Doc 1"], "sent_id": [0]},
+                "context": {"title": ["Doc 1"], "sentences": [["Some text."]]},
+            },
+            source="hotpotqa",
+            domain="research_qa",
+        )
+
+    # 4. transform_raw_to_task rejection of missing supporting_facts / no supporting titles
+    with pytest.raises(ValueError, match="Invalid citation_resolve spec"):
+        transform_raw_to_task(
+            {
+                "_id": "no_supp",
+                "question": "Some question?",
+                "answer": "valid answer",
+                "supporting_facts": {"title": [], "sent_id": []},
+                "context": {"title": ["Doc 1"], "sentences": [["Some text."]]},
+            },
+            source="hotpotqa",
+            domain="research_qa",
+        )
+
+    # 5. transform_raw_to_task rejection of missing question
+    with pytest.raises(ValueError, match="missing 'question'"):
+        transform_raw_to_task(
+            {
+                "_id": "no_q",
+                "question": "",
+                "answer": "valid answer",
+                "supporting_facts": {"title": ["Doc 1"], "sent_id": [0]},
+                "context": {"title": ["Doc 1"], "sentences": [["Some text."]]},
+            },
+            source="hotpotqa",
+            domain="research_qa",
+        )
+
+
+def test_hotpotqa_ids_and_splits_unchanged(fixtures_dir: Path) -> None:
+    """HotpotQA distractor ingestion preserves exact task IDs and split assignments (FR-13, FR-3)."""
+    tasks = ingest_benchmarks(
+        domains=["research_qa"],
+        fixtures_dir=fixtures_dir,
+        use_fixtures=True,
+        write_db=False,
+    )
+    assert len(tasks) == 6
+
+    expected_ids = [
+        "hotpotqa_5a7a0b3e5542990178904833",
+        "hotpotqa_5a8b57f25542995d1e6f1371",
+        "hotpotqa_5a8c25345542995d1e6f1402",
+        "hotpotqa_5a8d46215542995d1e6f1450",
+        "hotpotqa_5a8e73455542995d1e6f1512",
+        "hotpotqa_5a8f98105542995d1e6f1590",
+    ]
+    assert [t.task_id for t in tasks] == expected_ids
+
+    expected_splits = {
+        "hotpotqa_5a7a0b3e5542990178904833": "calibration",
+        "hotpotqa_5a8b57f25542995d1e6f1371": "eval",
+        "hotpotqa_5a8c25345542995d1e6f1402": "eval",
+        "hotpotqa_5a8d46215542995d1e6f1450": "eval",
+        "hotpotqa_5a8e73455542995d1e6f1512": "eval",
+        "hotpotqa_5a8f98105542995d1e6f1590": "calibration",
+    }
+    actual_splits = {t.task_id: t.split for t in tasks}
+    assert actual_splits == expected_splits
+
+    # Every task statement must contain CONTEXT_MARKER and every context title
+    for t in tasks:
+        assert t.verifier_type == "citation_resolve"
+        assert CONTEXT_MARKER in t.statement
+        spec = CitationResolveSpec.model_validate_json(t.verifier_spec or "{}")
+        assert len(spec.supporting_titles) >= 1
+        assert len(spec.context_titles) >= 1
+        for title in spec.context_titles:
+            assert f"[{title}]" in t.statement
 
 
 def test_gsm8k_transformation_and_numeric_extraction(fixtures_dir: Path) -> None:
@@ -230,7 +393,13 @@ def test_different_sources_never_produce_same_id(fixtures_dir: Path) -> None:
         domain="code_generation",
     )
     hotpotqa_task = transform_raw_to_task(
-        {"_id": "1", "question": "hotpot problem", "answer": "yes"},
+        {
+            "_id": "1",
+            "question": "hotpot problem",
+            "answer": "yes",
+            "supporting_facts": {"title": ["Doc 1"], "sent_id": [0]},
+            "context": {"title": ["Doc 1"], "sentences": [["Context text."]]},
+        },
         source="hotpotqa",
         domain="research_qa",
     )
