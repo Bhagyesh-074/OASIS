@@ -64,6 +64,45 @@ class WeightsConfig(BaseModel):
         }
 
 
+class NormalizationConfig(BaseModel):
+    """Normalization constants for continuous sub-scores (FR-3).
+
+    Attributes
+    ----------
+    max_subtasks:
+        Upper bound subtask count corresponding to normalized score 1.0.
+    max_skill_clusters:
+        Upper bound cluster count corresponding to normalized score 1.0.
+    min_subtasks:
+        Lower bound subtask count corresponding to normalized score 0.0.
+    min_skill_clusters:
+        Lower bound cluster count corresponding to normalized score 0.0.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    max_subtasks: int = Field(
+        default=8,
+        ge=1,
+        description="Upper subtask normalization bound (FR-3)",
+    )
+    max_skill_clusters: int = Field(
+        default=8,
+        ge=1,
+        description="Upper skill cluster normalization bound (FR-3)",
+    )
+    min_subtasks: int = Field(
+        default=1,
+        ge=1,
+        description="Lower subtask normalization bound (FR-3)",
+    )
+    min_skill_clusters: int = Field(
+        default=1,
+        ge=1,
+        description="Lower skill cluster normalization bound (FR-3)",
+    )
+
+
 class ComplexityConfig(BaseModel):
     """Frozen configuration for TCE complexity calculation (FR-1, FR-3, NFR-4, NFR-5).
 
@@ -82,6 +121,8 @@ class ComplexityConfig(BaseModel):
         Pinned SBERT model identifier (NFR-5: no aliases such as 'latest').
     cluster_distance_threshold:
         Distance threshold for grouping subtasks into skill clusters.
+    normalization:
+        Normalization bounds for sub-scores (FR-3).
     sha256:
         Hex-encoded SHA-256 hash of the configuration file (NFR-4).
     """
@@ -115,10 +156,44 @@ class ComplexityConfig(BaseModel):
         gt=0.0,
         description="Cluster distance threshold for skill grouping",
     )
+    context_marker: str = Field(
+        ...,
+        min_length=1,
+        description="Delimiter separating task instruction from context paragraphs (FR-1, FR-3)",
+    )
+    normalization: NormalizationConfig = Field(
+        default_factory=NormalizationConfig,
+        description="Sub-score normalization bounds loaded from configuration (FR-3)",
+    )
     sha256: str = Field(
         default="",
         description="SHA-256 digest of config file for run manifest (NFR-4)",
     )
+
+    @field_validator("context_marker")
+    @classmethod
+    def _validate_context_marker(cls, v: str) -> str:
+        """Validate that context_marker is a non-empty string (FR-1, FR-3)."""
+        if not isinstance(v, str):
+            raise TypeError(f"context_marker must be a string, got {type(v).__name__}")
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("context_marker cannot be empty or whitespace-only")
+        return v
+
+    @field_validator("normalization", mode="before")
+    @classmethod
+    def _coerce_normalization(cls, v: Any) -> NormalizationConfig:
+        """Coerce raw dictionary to validated NormalizationConfig (FR-3)."""
+        if isinstance(v, NormalizationConfig):
+            return v
+        if isinstance(v, dict):
+            return NormalizationConfig(**v)
+        if v is None:
+            return NormalizationConfig()
+        raise ValueError(
+            f"normalization must be NormalizationConfig or dict; got {type(v).__name__}"
+        )
 
     @field_validator("weights", mode="before")
     @classmethod
@@ -128,7 +203,9 @@ class ComplexityConfig(BaseModel):
             return v
         if isinstance(v, dict):
             return WeightsConfig(**v)
-        raise ValueError(f"weights must be WeightsConfig or dict; got {type(v).__name__}")
+        raise ValueError(
+            f"weights must be WeightsConfig or dict; got {type(v).__name__}"
+        )
 
     @field_validator("mvts_range", mode="before")
     @classmethod
@@ -136,7 +213,9 @@ class ComplexityConfig(BaseModel):
         """Ensure mvts_range is a 2-tuple of integers within [1, 8] (FR-1)."""
         if isinstance(v, (list, tuple)):
             if len(v) != 2:
-                raise ValueError(f"mvts_range must have exactly 2 elements [min, max]; got {v}")
+                raise ValueError(
+                    f"mvts_range must have exactly 2 elements [min, max]; got {v}"
+                )
             min_v, max_v = int(v[0]), int(v[1])
             if not (1 <= min_v <= max_v <= 8):
                 raise ValueError(
@@ -150,7 +229,9 @@ class ComplexityConfig(BaseModel):
     def _validate_sbert_model_pinned(cls, v: str) -> str:
         """Enforce pinned model identifier without 'latest' alias (NFR-5)."""
         if "latest" in v.lower():
-            raise ValueError(f"NFR-5 violation: sbert_model cannot use 'latest' alias; got {v!r}")
+            raise ValueError(
+                f"NFR-5 violation: sbert_model cannot use 'latest' alias; got {v!r}"
+            )
         return v
 
     @model_validator(mode="after")
@@ -249,10 +330,19 @@ def load_complexity_config(path: str | Path | None = None) -> ComplexityConfig:
         )
 
     # Ensure required top-level keys are present for clear error messages
-    required_keys = {"weights", "mvts_range", "thresholds", "sbert_model", "cluster_distance_threshold"}
+    required_keys = {
+        "weights",
+        "mvts_range",
+        "thresholds",
+        "sbert_model",
+        "cluster_distance_threshold",
+        "context_marker",
+    }
     missing = required_keys - set(data.keys())
     if missing:
-        raise ValueError(f"Missing required configuration key(s) in {config_path}: {sorted(missing)}")
+        raise ValueError(
+            f"Missing required configuration key(s) in {config_path}: {sorted(missing)}"
+        )
 
     return ComplexityConfig(
         version=data.get("version", "0.1.0-uncalibrated"),
@@ -261,6 +351,8 @@ def load_complexity_config(path: str | Path | None = None) -> ComplexityConfig:
         thresholds=data["thresholds"],
         sbert_model=data["sbert_model"],
         cluster_distance_threshold=float(data["cluster_distance_threshold"]),
+        context_marker=data["context_marker"],
+        normalization=data.get("normalization", {}),
         sha256=file_sha256,
     )
 
