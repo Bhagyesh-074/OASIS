@@ -56,15 +56,20 @@ def _clear_logs() -> Iterator[None]:
     clear_decision_log()
 
 
-def test_both_estimators_on_same_statement(gateway: Gateway, fake_llm: FakeLLM) -> None:
-    """FR-4 Integration: Run heuristic and LLM-planner on the same task; assert schema parity."""
-    statement = (
+def test_both_estimators_on_same_statement(gateway: Gateway, fake_llm: FakeLLM, tmp_path: Path) -> None:
+    """FR-4 Integration: Run heuristic and LLM-planner on the same task with context; assert schema parity."""
+    instruction = (
         "Write a parser for CSV files, add unit tests, then document the API and "
         "finally benchmark it against pandas."
     )
+    context = (
+        "Paragraph 1: CSV specification RFC 4180 details commas and quotes.\n"
+        "Paragraph 2: Performance benchmark criteria and pandas comparison baseline."
+    )
+    statement = f"{instruction}\n\n### CONTEXT\n{context}"
 
-    # 1. Script the FakeLLM response for the LLM planner
-    messages = build_planner_messages(statement, domain="code_generation")
+    # 1. Script the FakeLLM response for the LLM planner (prompt receives ONLY instruction)
+    messages = build_planner_messages(instruction, domain="code_generation")
     scripted_payload = {
         "mvts": 4,
         "subtasks": [
@@ -81,10 +86,10 @@ def test_both_estimators_on_same_statement(gateway: Gateway, fake_llm: FakeLLM) 
         response={"content": json.dumps(scripted_payload)},
     )
 
-    # 2. Run Heuristic Estimator
+    # 2. Run Heuristic Estimator on statement with context
     est_heuristic = estimate_heuristic(statement, domain="code_generation")
 
-    # 3. Run LLM Planner Estimator (via direct function)
+    # 3. Run LLM Planner Estimator on statement with context (via direct function)
     est_llm = estimate_llm_func(
         statement,
         domain="code_generation",
@@ -92,7 +97,7 @@ def test_both_estimators_on_same_statement(gateway: Gateway, fake_llm: FakeLLM) 
         model=DEFAULT_MODEL,
     )
 
-    # 4. Run LLM Planner Estimator (via OO wrapper)
+    # 4. Run LLM Planner Estimator on statement with context (via OO wrapper)
     planner_wrapper = LLMPlanner(gateway=gateway, model=DEFAULT_MODEL)
     est_llm_oo = planner_wrapper.estimate(statement, domain="code_generation")
 
@@ -139,8 +144,26 @@ def test_both_estimators_on_same_statement(gateway: Gateway, fake_llm: FakeLLM) 
     # Weights keys must be identical
     assert set(heuristic_dump["weights"].keys()) == set(llm_dump["weights"].keys())
 
-    # 7. Audit log check (both logged decisions under FR-24)
+    # 7. Audit log check (both logged decisions under FR-24 and recorded excluded context)
     logs = get_decision_log()
     assert len(logs) >= 3  # heuristic + llm + llm_oo
     estimators_logged = {record.inputs.get("estimator", "heuristic") for record in logs}
     assert "llm_planner" in estimators_logged
+    for record in logs[-3:]:
+        assert record.inputs.get("context_chars_excluded", 0) == len(context.strip())
+        assert record.inputs.get("context_chars_excluded", 0) > 0
+
+    # 8. Assert on Gateway call log that messages never contain any context text
+    sink_file = tmp_path / "integration_gateway.jsonl"
+    sink_records = [
+        json.loads(line)
+        for line in sink_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(sink_records) == 2  # est_llm + est_llm_oo
+    for record in sink_records:
+        for msg in record["messages"]:
+            assert "Paragraph 1" not in msg["content"]
+            assert "### CONTEXT" not in msg["content"]
+            if msg["role"] == "user":
+                assert instruction in msg["content"]

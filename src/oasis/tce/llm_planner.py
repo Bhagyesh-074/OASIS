@@ -59,6 +59,7 @@ from oasis.tce.config import ComplexityConfig, load_complexity_config
 from oasis.tce.heuristic import (
     compute_dependency_density,
     compute_skill_clusters,
+    split_statement,
 )
 from oasis.tce.types import Estimate, SubScores, WeightedContribution
 
@@ -299,6 +300,15 @@ def estimate(
     start_time = time.perf_counter()
     cfg = config or load_complexity_config()
 
+    # Split statement using configured context marker (FR-1, FR-2, FR-3, FR-4)
+    # Never hardcode marker in code; loaded directly from cfg.context_marker
+    marker = cfg.context_marker
+    is_empty_instruction_fallback = bool(
+        marker and marker in statement and not statement.partition(marker)[0].strip()
+    )
+    instruction, context = split_statement(statement, marker)
+    context_chars_excluded = len(context)
+
     # 1. Resolve and validate model identifier (NFR-5)
     model_id = get_planner_model(model)
 
@@ -314,8 +324,8 @@ def estimate(
     else:
         gw = get_default_gateway()
 
-    # 3. Build prompt and execute call through Gateway seam
-    messages = build_planner_messages(statement, domain=domain)
+    # 3. Build prompt and execute call through Gateway seam (send ONLY instruction)
+    messages = build_planner_messages(instruction, domain=domain)
     response = gw.call(
         model=model_id,
         messages=messages,
@@ -328,7 +338,7 @@ def estimate(
     # 4. Defensive parsing: strip fences, clamp MVTS, handle fallbacks
     clamped_mvts, raw_mvts, subtasks, rationale, fallback_used = parse_llm_response(
         raw_content=raw_content,
-        statement=statement,
+        statement=instruction,
         config=cfg,
     )
 
@@ -390,6 +400,10 @@ def estimate(
         justification = (
             f"LLM planner: mvts={clamped_mvts}{clamp_str}, subtasks={subtask_count}. Rationale: {rationale}"
         )
+    if is_empty_instruction_fallback:
+        justification += (
+            " (empty instruction before marker, fell back to whole statement)"
+        )
 
     log_inputs: dict[str, Any] = {
         "statement": statement,
@@ -403,6 +417,7 @@ def estimate(
         "raw_mvts": raw_mvts,
         "fallback_used": fallback_used,
         "rationale": rationale,
+        "context_chars_excluded": context_chars_excluded,
     }
     if domain is not None:
         log_inputs["domain"] = domain

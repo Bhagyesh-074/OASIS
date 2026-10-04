@@ -367,3 +367,122 @@ def test_gateway_call_purpose_default_and_override(gateway: Gateway, fake_llm: F
     planner_default.estimate(statement, purpose="supervision")
     assert len(gateway.accounting_log) == 5
     assert gateway.accounting_log[-1]["purpose"] == "supervision"
+
+
+# ---------------------------------------------------------------------------
+# 8. Context Splitting & Excluded Auxiliary Text (FR-1, FR-2, FR-3, FR-4, FR-24)
+# ---------------------------------------------------------------------------
+def test_context_marker_excludes_context_from_gateway_call_and_matches_instruction_alone(
+    gateway: Gateway, fake_llm: FakeLLM, tmp_path: Path
+) -> None:
+    """FR-4: A statement with long context after marker sends only instruction to Gateway and matches instruction alone."""
+    instruction = "Write a CSV parser in Python, write unit tests, and document the API."
+    paragraphs = [
+        f"Paragraph {i}: Auxiliary background documentation details for data parsing and validation #{i}."
+        for i in range(1, 11)
+    ]
+    context_text = "\n\n".join(paragraphs)
+    statement_with_context = f"{instruction}\n\n### CONTEXT\n{context_text}"
+
+    messages_instruction = build_planner_messages(instruction)
+    scripted_payload = {
+        "mvts": 3,
+        "subtasks": [
+            "Write a CSV parser in Python",
+            "Write comprehensive unit tests",
+            "Document the API specification",
+        ],
+        "rationale": "Three subtasks requiring development, testing, and documentation.",
+    }
+    fake_llm.script(
+        model=DEFAULT_MODEL,
+        messages=messages_instruction,
+        response={"content": json.dumps(scripted_payload)},
+    )
+
+    # 1. Run estimate with context
+    est_with_context = estimate(statement_with_context, gateway=gateway, model=DEFAULT_MODEL)
+
+    # 2. Assert on the Gateway call log (JSONL sink)
+    sink_file = tmp_path / "gateway_test.jsonl"
+    records = [
+        json.loads(line)
+        for line in sink_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(records) == 1
+    logged_messages = records[0]["messages"]
+    for msg in logged_messages:
+        assert "Paragraph 1" not in msg["content"]
+        assert "Auxiliary background" not in msg["content"]
+        assert "### CONTEXT" not in msg["content"]
+        if msg["role"] == "user":
+            assert instruction in msg["content"]
+
+    # 3. Run estimate on instruction alone (same scripted response will be matched)
+    est_alone = estimate(instruction, gateway=gateway, model=DEFAULT_MODEL)
+
+    # 4. Results are identical
+    assert est_with_context.mvts == est_alone.mvts
+    assert est_with_context.subscores == est_alone.subscores
+    assert est_with_context.contributions == est_alone.contributions
+    assert est_with_context.subtasks == est_alone.subtasks
+    assert est_with_context.justification == est_alone.justification
+
+    # 5. Check decision logs (FR-24)
+    logs = get_decision_log()
+    assert len(logs) >= 2
+    log_context = logs[-2]
+    log_alone = logs[-1]
+    assert log_context.inputs["context_chars_excluded"] == len(context_text.strip())
+    assert log_context.inputs["context_chars_excluded"] > 0
+    assert log_alone.inputs["context_chars_excluded"] == 0
+
+
+def test_absent_marker_leaves_behaviour_unchanged(gateway: Gateway, fake_llm: FakeLLM) -> None:
+    """FR-4: Absent marker leaves behaviour unchanged and context_chars_excluded is 0."""
+    statement = "Deploy a kubernetes cluster and configure ingress controllers."
+    messages = build_planner_messages(statement)
+    fake_llm.script(
+        model=DEFAULT_MODEL,
+        messages=messages,
+        response={
+            "content": json.dumps({
+                "mvts": 2,
+                "subtasks": ["Deploy cluster", "Configure ingress"],
+                "rationale": "Two infra stages.",
+            })
+        },
+    )
+
+    est = estimate(statement, gateway=gateway, model=DEFAULT_MODEL)
+    assert est.mvts == 2
+    assert "empty instruction before marker" not in est.justification
+
+    logs = get_decision_log()
+    assert logs[-1].inputs["context_chars_excluded"] == 0
+
+
+def test_empty_instruction_falls_back_with_justification(gateway: Gateway, fake_llm: FakeLLM) -> None:
+    """FR-4: Empty instruction before marker falls back to whole statement with justification."""
+    statement = "   \n### CONTEXT\nBackground documentation text without preceding instruction."
+    messages = build_planner_messages(statement)
+    fake_llm.script(
+        model=DEFAULT_MODEL,
+        messages=messages,
+        response={
+            "content": json.dumps({
+                "mvts": 1,
+                "subtasks": ["Review background documentation"],
+                "rationale": "Fallback task.",
+            })
+        },
+    )
+
+    est = estimate(statement, gateway=gateway, model=DEFAULT_MODEL)
+    assert est.mvts == 1
+    assert "empty instruction before marker, fell back to whole statement" in est.justification
+
+    logs = get_decision_log()
+    assert logs[-1].inputs["context_chars_excluded"] == 0
+
