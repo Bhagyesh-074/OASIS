@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import random
 import re
 import sys
@@ -20,9 +21,12 @@ from typing import Any
 
 from oasis.bench.config import BenchmarkConfig, load_benchmark_config
 from oasis.bench.models import (
+    CONTEXT_MARKER,
     TaskDomain,
     TaskRecord,
 )
+
+logger = logging.getLogger(__name__)
 
 # Canonical timestamp for deterministic benchmark generation
 DEFAULT_CREATED_AT = "2026-09-01T00:00:00+00:00"
@@ -31,6 +35,13 @@ DEFAULT_CREATED_AT = "2026-09-01T00:00:00+00:00"
 DEFAULT_FIXTURES_DIR = (
     Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "bench"
 )
+
+
+def derive_stable_seed(base_seed: int, key: str) -> int:
+    """Derive a deterministic 32-bit integer seed using SHA-256 (FR-3, NFR-4)."""
+    payload = f"{base_seed}:{key}".encode()
+    digest = hashlib.sha256(payload).digest()
+    return int.from_bytes(digest[:4], "big")
 
 
 # ---------------------------------------------------------------------------
@@ -105,12 +116,22 @@ def transform_raw_to_task(
             task_id = f"mbpp_{int(native_id):04d}"
         except (ValueError, TypeError):
             task_id = f"mbpp_{source_ref}"
-        statement = str(raw.get("text", raw.get("prompt", ""))).strip()
+        instruction_text = str(raw.get("text", raw.get("prompt", ""))).strip()
         code = str(raw.get("code", "")).strip()
         test_list = raw.get("test_list", [])
         test_setup = raw.get("test_setup_code", "")
         test_code = (
             "\n".join(test_list) if isinstance(test_list, list) else str(test_list)
+        )
+        first_assert = (
+            test_list[0]
+            if (isinstance(test_list, list) and len(test_list) > 0)
+            else (test_code.splitlines()[0] if test_code else "")
+        )
+        statement = (
+            f"{instruction_text}\n\n{CONTEXT_MARKER}\nYour code should pass this test:\n{first_assert}"
+            if first_assert
+            else instruction_text
         )
         spec = json.dumps({"test_code": test_code, "test_setup_code": test_setup})
         return {
@@ -191,6 +212,10 @@ def transform_raw_to_task(
         source_ref = native_id
         answer = str(raw.get("answer", "")).strip()
         expected_val = extract_gsm8k_numeric(answer)
+        if expected_val is None:
+            raise ValueError(
+                f"Cannot emit numeric_consistency spec with null expected_value for task '{task_id}'"
+            )
         spec = json.dumps({"expected_value": expected_val, "tolerance": 1e-4})
         return {
             "task_id": task_id,
@@ -464,18 +489,18 @@ def assign_splits(
         if not unassigned:
             continue
 
-        # Sort stably by task_id before sampling
-        unassigned_sorted = sorted(unassigned, key=lambda x: str(x["task_id"]))
+        # Rank unassigned tasks within each domain by sha256(f"{seed}:{task_id}")
+        def task_rank_key(task_item: dict[str, Any]) -> tuple[str, str]:
+            tid = str(task_item["task_id"])
+            h = hashlib.sha256(f"{seed}:{tid}".encode()).hexdigest()
+            return (h, tid)
 
-        # Seeded domain-specific RNG
-        domain_seed = seed + abs(hash(domain)) % 100_000
-        rng = random.Random(domain_seed)
+        ranked = sorted(unassigned, key=task_rank_key)
+        num_calib = round(len(ranked) * calibration_fraction)
+        calib_ids = {t["task_id"] for t in ranked[:num_calib]}
 
-        num_calib = round(len(unassigned_sorted) * calibration_fraction)
-        calib_indices = set(rng.sample(range(len(unassigned_sorted)), num_calib))
-
-        for idx, task_item in enumerate(unassigned_sorted):
-            split_val = "calibration" if idx in calib_indices else "eval"
+        for task_item in unassigned:
+            split_val = "calibration" if task_item["task_id"] in calib_ids else "eval"
             rec_dict = dict(task_item)
             rec_dict["split"] = split_val
             records.append(TaskRecord.model_validate(rec_dict))
@@ -743,8 +768,8 @@ def ingest_benchmarks(
             else cfg.domain_counts.get(domain, 20)
         )
 
-        # If allocation has specific counts, scale proportionally if count_override passed
-        for source, src_target in allocation.items():
+        # Stably iterate sources within domain
+        for source, src_target in sorted(allocation.items(), key=lambda x: x[0]):
             if count_override is not None:
                 total_alloc = sum(allocation.values()) or 1
                 sample_count = max(1, round(src_target * domain_total / total_alloc))
@@ -758,8 +783,25 @@ def ingest_benchmarks(
                 use_fixtures=use_fixtures,
             )
 
-            # Seeded deterministic sampling
-            src_seed = seed + abs(hash(source)) % 10_000
+            # Filter out GSM8K records with no extractable numeric answer BEFORE sampling (FR-13)
+            if source == "gsm8k":
+                valid_items: list[dict[str, Any]] = []
+                dropped = 0
+                for item in raw_items:
+                    ans = str(item.get("answer", ""))
+                    if extract_gsm8k_numeric(ans) is not None:
+                        valid_items.append(item)
+                    else:
+                        dropped += 1
+                if dropped > 0:
+                    logger.warning(
+                        "Filtered out %d GSM8K records with no extractable numeric answer before sampling",
+                        dropped,
+                    )
+                raw_items = valid_items
+
+            # Seeded deterministic sampling with stable sha256-derived seed
+            src_seed = derive_stable_seed(seed, source)
             sampled_items = sample_raw_data(
                 raw_items, count=sample_count, seed=src_seed
             )

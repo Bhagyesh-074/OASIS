@@ -21,7 +21,7 @@ from oasis.bench.ingest import (
     transform_raw_to_task,
     write_to_db_adapter,
 )
-from oasis.bench.models import TaskRecord
+from oasis.bench.models import CONTEXT_MARKER, TaskRecord
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +98,12 @@ def test_mbpp_transformation(fixtures_dir: Path) -> None:
     assert task_dict["domain"] == "code_generation"
     assert task_dict["source"] == "mbpp"
     assert task_dict["verifier_type"] == "pytest"
+
+    # Context marker and first assert presence (including function name)
+    assert CONTEXT_MARKER in task_dict["statement"]
+    assert "Your code should pass this test:\nassert min_cost" in task_dict["statement"]
+    assert "min_cost" in task_dict["statement"]
+
     spec = json.loads(task_dict["verifier_spec"])
     assert "assert min_cost" in spec["test_code"]
 
@@ -160,6 +166,43 @@ def test_gsm8k_transformation_and_numeric_extraction(fixtures_dir: Path) -> None
     assert extract_gsm8k_numeric("Loss is -15. #### -15") == -15.0
     assert extract_gsm8k_numeric("No marker here but ends with 99") == 99.0
     assert extract_gsm8k_numeric("No numbers at all") is None
+
+
+def test_gsm8k_filtering_and_null_value_rejection(
+    fixtures_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Filter out GSM8K records with no extractable numeric answer before sampling, and reject null expected_value."""
+    raw_items = load_raw_from_fixture(fixtures_dir / "gsm8k_sample.jsonl")
+    # Verify the unextractable fixture row is present
+    unextractable = [
+        r for r in raw_items if extract_gsm8k_numeric(str(r.get("answer", ""))) is None
+    ]
+    assert len(unextractable) >= 1
+
+    # Ingesting benchmarks with fixtures drops the unextractable record
+    with caplog.at_level("WARNING"):
+        records = ingest_benchmarks(
+            domains=["quant_analysis"],
+            count_override=10,
+            fixtures_dir=fixtures_dir,
+            use_fixtures=True,
+            write_db=False,
+        )
+
+    # Ingested records must all have valid numeric consistency specs
+    assert len(records) > 0
+    for r in records:
+        assert r.verifier_type == "numeric_consistency"
+        spec = r.parsed_verifier_spec()
+        assert spec.get("expected_value") is not None
+        assert isinstance(spec["expected_value"], (int, float))
+
+    # Calling transform_raw_to_task directly on unextractable record raises ValueError
+    with pytest.raises(
+        ValueError,
+        match="Cannot emit numeric_consistency spec with null expected_value",
+    ):
+        transform_raw_to_task(unextractable[0], source="gsm8k", domain="quant_analysis")
 
 
 def test_different_sources_never_produce_same_id(fixtures_dir: Path) -> None:
@@ -235,8 +278,14 @@ def test_different_sources_never_produce_same_id(fixtures_dir: Path) -> None:
     hp_ids = {
         transform_raw_to_task(r, "hotpotqa", "research_qa")["task_id"] for r in hp_raw
     }
+    gsm_valid = [
+        r
+        for r in gsm_raw
+        if extract_gsm8k_numeric(str(r.get("answer", ""))) is not None
+    ]
     gsm_ids = {
-        transform_raw_to_task(r, "gsm8k", "quant_analysis")["task_id"] for r in gsm_raw
+        transform_raw_to_task(r, "gsm8k", "quant_analysis")["task_id"]
+        for r in gsm_valid
     }
 
     assert mbpp_ids.isdisjoint(he_ids)

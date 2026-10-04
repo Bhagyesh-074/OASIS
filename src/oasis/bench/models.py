@@ -21,6 +21,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+CONTEXT_MARKER = "### CONTEXT"
+
 TaskDomain = Literal[
     "code_generation",
     "research_qa",
@@ -89,9 +91,13 @@ class TaskRecord(BaseModel):
     task_id: str = Field(..., description="Unique task primary key")
     domain: TaskDomain = Field(..., description="Task evaluation domain")
     source: str = Field(..., description="Source dataset or 'authored'")
-    source_ref: str | None = Field(default=None, description="Reference ID in source dataset")
+    source_ref: str | None = Field(
+        default=None, description="Reference ID in source dataset"
+    )
     statement: str = Field(..., min_length=1, description="Problem statement text")
-    reference_answer: str | None = Field(default=None, description="Gold/reference answer")
+    reference_answer: str | None = Field(
+        default=None, description="Gold/reference answer"
+    )
     verifier_type: TaskVerifierType | None = Field(
         default=None, description="L3 verifier kind (FR-13)"
     )
@@ -101,7 +107,9 @@ class TaskRecord(BaseModel):
     complexity_label: TaskComplexityLabel | None = Field(
         default=None, description="Coarse complexity label ('low', 'medium', 'high')"
     )
-    split: TaskSplit = Field(..., description="Held-out partition ('calibration' or 'eval') (FR-3)")
+    split: TaskSplit = Field(
+        ..., description="Held-out partition ('calibration' or 'eval') (FR-3)"
+    )
     created_at: str = Field(..., description="ISO 8601 creation timestamp")
 
     def parsed_verifier_spec(self) -> dict[str, Any]:
