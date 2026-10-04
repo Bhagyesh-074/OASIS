@@ -12,7 +12,7 @@ from oasis.tce.config import (
     compute_complexity_config_hash,
     load_complexity_config,
 )
-from oasis.tce.heuristic import estimate, similarity
+from oasis.tce.heuristic import estimate, similarity, split_statement
 from oasis.tce.types import Estimate, SubScores, WeightedContribution
 
 __all__ = [
@@ -27,4 +27,5 @@ __all__ = [
     "load_complexity_config",
     "log_tce_decision",
     "similarity",
+    "split_statement",
 ]

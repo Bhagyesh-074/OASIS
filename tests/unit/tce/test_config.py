@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml  # type: ignore[import-untyped]
@@ -58,6 +59,7 @@ def test_hash_stability(tmp_path: Path) -> None:
         "thresholds": {k: float(k) * 0.1 for k in range(1, 9)},
         "sbert_model": "sentence-transformers/all-MiniLM-L6-v2",
         "cluster_distance_threshold": 0.35,
+        "context_marker": "### CONTEXT",
     }
     raw_text = yaml.dump(content)
     raw_bytes = raw_text.encode("utf-8")
@@ -90,6 +92,7 @@ def test_crlf_and_lf_produce_same_hash(tmp_path: Path) -> None:
         "  8: 0.9\n"
         "sbert_model: 'sentence-transformers/all-MiniLM-L6-v2'\n"
         "cluster_distance_threshold: 0.35\n"
+        "context_marker: '### CONTEXT'\n"
     )
     lf_bytes = base_content.encode("utf-8")
     crlf_bytes = base_content.replace("\n", "\r\n").encode("utf-8")
@@ -135,11 +138,12 @@ def test_changing_weight_changes_hash(tmp_path: Path) -> None:
         "  8: 0.9\n"
         "sbert_model: 'sentence-transformers/all-MiniLM-L6-v2'\n"
         "cluster_distance_threshold: 0.35\n"
+        "context_marker: '### CONTEXT'\n"
     )
     # Change weights while keeping sum = 1.0
-    modified_yaml = base_yaml.replace("subtask_count: 0.4", "subtask_count: 0.5").replace(
-        "skill_clusters: 0.4", "skill_clusters: 0.3"
-    )
+    modified_yaml = base_yaml.replace(
+        "subtask_count: 0.4", "subtask_count: 0.5"
+    ).replace("skill_clusters: 0.4", "skill_clusters: 0.3")
 
     base_file = tmp_path / "base.yaml"
     mod_file = tmp_path / "modified.yaml"
@@ -192,6 +196,7 @@ def test_mvts_range_validation() -> None:
             weights=weights,
             sbert_model="sentence-transformers/all-MiniLM-L6-v2",
             cluster_distance_threshold=0.35,
+            context_marker="### CONTEXT",
             mvts_range=(0, 8),
             thresholds={k: float(k) for k in range(9)},
         )
@@ -203,6 +208,7 @@ def test_mvts_range_validation() -> None:
             weights=weights,
             sbert_model="sentence-transformers/all-MiniLM-L6-v2",
             cluster_distance_threshold=0.35,
+            context_marker="### CONTEXT",
             mvts_range=(1, 9),
             thresholds={k: float(k) for k in range(1, 10)},
         )
@@ -214,6 +220,7 @@ def test_mvts_range_validation() -> None:
             weights=weights,
             sbert_model="sentence-transformers/all-MiniLM-L6-v2",
             cluster_distance_threshold=0.35,
+            context_marker="### CONTEXT",
             mvts_range=(6, 3),
             thresholds={k: float(k) for k in range(3, 7)},
         )
@@ -232,7 +239,9 @@ def test_thresholds_monotonicity() -> None:
         7: 0.7,
         8: 0.8,
     }
-    with pytest.raises(ValueError, match="Thresholds must be strictly monotonic increasing"):
+    with pytest.raises(
+        ValueError, match="Thresholds must be strictly monotonic increasing"
+    ):
         ComplexityConfig(
             version="v1",
             weights=weights,
@@ -240,6 +249,7 @@ def test_thresholds_monotonicity() -> None:
             thresholds=non_monotonic_thresholds,
             sbert_model="sentence-transformers/all-MiniLM-L6-v2",
             cluster_distance_threshold=0.35,
+            context_marker="### CONTEXT",
         )
 
 
@@ -260,6 +270,7 @@ def test_thresholds_keys_cover_mvts_range() -> None:
             thresholds=incomplete_thresholds,
             sbert_model="sentence-transformers/all-MiniLM-L6-v2",
             cluster_distance_threshold=0.35,
+            context_marker="### CONTEXT",
         )
 
 
@@ -274,6 +285,7 @@ def test_sbert_model_pinned_rejection() -> None:
             thresholds={k: float(k) * 0.1 for k in range(1, 9)},
             sbert_model="all-MiniLM-latest",
             cluster_distance_threshold=0.35,
+            context_marker="### CONTEXT",
         )
 
 
@@ -322,3 +334,42 @@ def test_load_config_missing_required_keys(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Missing required configuration key"):
         load_complexity_config(bad_yaml)
+
+
+def test_context_marker_loaded_from_yaml() -> None:
+    """FR-1, FR-3: context_marker is loaded from config/complexity.yaml as a non-empty string."""
+    config = load_complexity_config()
+    assert config.context_marker == "### CONTEXT"
+    assert isinstance(config.context_marker, str)
+    assert len(config.context_marker) > 0
+
+
+def test_context_marker_validation() -> None:
+    """FR-1, FR-3: context_marker must be a validated non-empty string without hardcoding."""
+    from pydantic import ValidationError
+
+    weights = WeightsConfig(subtask_count=0.4, skill_clusters=0.4, dep_density=0.2)
+    valid_kwargs: dict[str, Any] = {
+        "version": "v1",
+        "weights": weights,
+        "sbert_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "cluster_distance_threshold": 0.35,
+        "mvts_range": (1, 8),
+        "thresholds": {k: float(k) * 0.1 for k in range(1, 9)},
+    }
+
+    # Empty string rejected
+    with pytest.raises(ValidationError):
+        ComplexityConfig(**valid_kwargs, context_marker="")
+
+    # Whitespace-only string rejected
+    with pytest.raises(ValidationError):
+        ComplexityConfig(**valid_kwargs, context_marker="   \n\t ")
+
+    # Missing context_marker rejected
+    with pytest.raises(ValidationError):
+        ComplexityConfig(**valid_kwargs)
+
+    # Custom non-empty marker accepted
+    cfg = ComplexityConfig(**valid_kwargs, context_marker="--- CUSTOM CONTEXT ---")
+    assert cfg.context_marker == "--- CUSTOM CONTEXT ---"

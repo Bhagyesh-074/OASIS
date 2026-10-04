@@ -196,11 +196,21 @@ def _extract_subtasks_with_cues(
 
             # Check coordinated verbs with their own dobj where head verb also has dobj
             # or imperative clause following a comma
-            token_has_dobj = any(c.dep_ in ("dobj", "pobj", "ccomp") for c in token.children)
+            token_has_dobj = any(
+                c.dep_ in ("dobj", "pobj", "ccomp") for c in token.children
+            )
             is_coord_verb = False
-            if token.pos_ in ("VERB", "AUX") and token_has_dobj and (
-                token.dep_ in ("conj", "dep", "parataxis")
-                or (token.dep_ == "ROOT" and i > 0 and tokens[i - 1].text in (",", ";"))
+            if (
+                token.pos_ in ("VERB", "AUX")
+                and token_has_dobj
+                and (
+                    token.dep_ in ("conj", "dep", "parataxis")
+                    or (
+                        token.dep_ == "ROOT"
+                        and i > 0
+                        and tokens[i - 1].text in (",", ";")
+                    )
+                )
             ):
                 is_coord_verb = True
 
@@ -391,7 +401,9 @@ def build_dependency_graph(
                             continue
                     is_ord = True
                     break
-            if not is_ord and any(subtasks[j].lower().startswith(p) for p in ORDERING_PHRASES):
+            if not is_ord and any(
+                subtasks[j].lower().startswith(p) for p in ORDERING_PHRASES
+            ):
                 is_ord = True
 
         if j > 0 and is_ord:
@@ -454,8 +466,39 @@ def compute_dependency_density(
 
 
 # ---------------------------------------------------------------------------
-# 4 & 5. Main estimate function with decision logging (FR-1, FR-2, FR-3, FR-24, NFR-1)
+# 4 & 5. Statement context splitter & Main estimate function with decision logging (FR-1, FR-2, FR-3, FR-24, NFR-1)
 # ---------------------------------------------------------------------------
+def split_statement(statement: str, marker: str) -> tuple[str, str]:
+    """Split a task statement on the first occurrence of marker into (instruction, context) (FR-1, FR-2, FR-3).
+
+    Splits on the first occurrence of the marker. If the marker is absent,
+    the instruction is the whole statement and context is empty. If the
+    instruction part before the marker is empty or whitespace-only, falls
+    back to the whole statement as the instruction and context is empty.
+
+    Parameters
+    ----------
+    statement:
+        The task prompt or problem statement.
+    marker:
+        The context delimiter string loaded from configuration (no hard-coded marker).
+
+    Returns
+    -------
+    tuple[str, str]
+        (instruction, context) with surrounding whitespace stripped.
+    """
+    if not marker or marker not in statement:
+        return statement, ""
+
+    prefix, _, suffix = statement.partition(marker)
+    if not prefix.strip():
+        # Instruction part is empty -> fall back to the whole statement
+        return statement, ""
+
+    return prefix.strip(), suffix.strip()
+
+
 def estimate(
     statement: str,
     domain: str | None = None,
@@ -464,13 +507,14 @@ def estimate(
     """Produce an integer MVTS estimate and sub-score breakdown (FR-1, FR-2, FR-3, FR-24, NFR-1).
 
     Executes:
-    1. spaCy clause and imperative extraction into candidate subtasks.
-    2. SBERT embeddings and Agglomerative Clustering for skill clusters.
-    3. NetworkX DiGraph for dependency density.
-    4. Sub-score normalization using bounds loaded from config (FR-3).
-    5. Weighted contribution calculation and monotonic MVTS mapping (FR-1, FR-2).
-    6. Decision logging to decision_log audit seam (FR-24).
-    7. Supervisory latency measurement in milliseconds (NFR-1).
+    1. Splits statement on configured context marker and analyses only the instruction (FR-1, FR-2, FR-3).
+    2. spaCy clause and imperative extraction into candidate subtasks.
+    3. SBERT embeddings and Agglomerative Clustering for skill clusters.
+    4. NetworkX DiGraph for dependency density.
+    5. Sub-score normalization using bounds loaded from config (FR-3).
+    6. Weighted contribution calculation and monotonic MVTS mapping (FR-1, FR-2).
+    7. Decision logging to decision_log audit seam including context_chars_excluded (FR-24).
+    8. Supervisory latency measurement in milliseconds (NFR-1).
 
     Parameters
     ----------
@@ -490,8 +534,17 @@ def estimate(
     cfg = config or load_complexity_config()
     pipeline = get_spacy_nlp()
 
-    # 1. Candidate subtasks (FR-1, FR-2)
-    subtasks, ordering_indices = _extract_subtasks_with_cues(statement, nlp=pipeline)
+    # Split statement using configured context marker (FR-1, FR-2, FR-3)
+    # Never hardcode marker in code; loaded directly from cfg.context_marker
+    marker = cfg.context_marker
+    is_empty_instruction_fallback = bool(
+        marker and marker in statement and not statement.partition(marker)[0].strip()
+    )
+    instruction, context = split_statement(statement, marker)
+    context_chars_excluded = len(context)
+
+    # 1. Candidate subtasks: analyse ONLY the instruction (FR-1, FR-2, FR-3)
+    subtasks, ordering_indices = _extract_subtasks_with_cues(instruction, nlp=pipeline)
     subtask_count = len(subtasks)
 
     # 2. Skill clusters (FR-2, FR-3, NFR-5)
@@ -505,10 +558,15 @@ def estimate(
     # 4. Documented normalization using constants loaded from config (FR-3)
     norm_cfg = cfg.normalization
     subtask_range = max(1, norm_cfg.max_subtasks - norm_cfg.min_subtasks)
-    norm_subtasks = max(0.0, min(1.0, (float(subtask_count) - norm_cfg.min_subtasks) / subtask_range))
+    norm_subtasks = max(
+        0.0, min(1.0, (float(subtask_count) - norm_cfg.min_subtasks) / subtask_range)
+    )
 
     cluster_range = max(1, norm_cfg.max_skill_clusters - norm_cfg.min_skill_clusters)
-    norm_clusters = max(0.0, min(1.0, (float(skill_clusters) - norm_cfg.min_skill_clusters) / cluster_range))
+    norm_clusters = max(
+        0.0,
+        min(1.0, (float(skill_clusters) - norm_cfg.min_skill_clusters) / cluster_range),
+    )
 
     norm_density = max(0.0, min(1.0, dep_density))
 
@@ -540,6 +598,10 @@ def estimate(
         f"skill_clusters={skill_clusters}, "
         f"dep_density={dep_density:.2f}"
     )
+    if is_empty_instruction_fallback:
+        justification += (
+            " (empty instruction before marker, fell back to whole statement)"
+        )
 
     log_inputs: dict[str, Any] = {
         "statement": statement,
@@ -548,6 +610,7 @@ def estimate(
         "contributions": contributions.model_dump(),
         "composite_score": composite_score,
         "mvts": mvts,
+        "context_chars_excluded": context_chars_excluded,
     }
     if domain is not None:
         log_inputs["domain"] = domain

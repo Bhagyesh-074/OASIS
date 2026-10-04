@@ -22,6 +22,7 @@ from oasis.tce.heuristic import (
     extract_subtasks,
     get_spacy_nlp,
     similarity,
+    split_statement,
 )
 from oasis.tce.types import Estimate, SubScores, WeightedContribution
 
@@ -47,7 +48,9 @@ def test_subtask_extraction_simple_one_sentence() -> None:
     ]
     for statement in simple_cases:
         subtasks = extract_subtasks(statement)
-        assert len(subtasks) == 1, f"Expected 1 subtask for '{statement}', got: {subtasks}"
+        assert len(subtasks) == 1, (
+            f"Expected 1 subtask for '{statement}', got: {subtasks}"
+        )
         assert subtasks[0] == statement
 
 
@@ -62,7 +65,9 @@ def test_subtask_extraction_multi_clause_and_ordering() -> None:
     assert any("train" in st.lower() for st in subtasks1)
 
     # Line enumerations
-    stmt2 = "1. Parse the input YAML.\n2. Validate against schema.\n3. Save to database."
+    stmt2 = (
+        "1. Parse the input YAML.\n2. Validate against schema.\n3. Save to database."
+    )
     subtasks2 = extract_subtasks(stmt2)
     assert len(subtasks2) == 3
     assert subtasks2 == [
@@ -110,7 +115,9 @@ def test_dependency_density_bounds() -> None:
     assert compute_dependency_density(["Single task"]) == 0.0
 
     # Independent tasks with no cues or shared nouns
-    density_indep = compute_dependency_density(["Write unit test", "Bake chocolate cake"])
+    density_indep = compute_dependency_density(
+        ["Write unit test", "Bake chocolate cake"]
+    )
     assert 0.0 <= density_indep <= 1.0
 
     # Sequential tasks with shared nouns and ordering cues
@@ -290,7 +297,9 @@ def test_performance_lazy_loading_and_speedup() -> None:
 # ---------------------------------------------------------------------------
 def test_20_fixture_statements_contract_and_determinism() -> None:
     """FR-1, FR-2, FR-3: 20 fixture statements across 5 domains satisfy schema and determinism."""
-    fixtures_file = Path(__file__).resolve().parents[2] / "fixtures" / "tce_statements.yaml"
+    fixtures_file = (
+        Path(__file__).resolve().parents[2] / "fixtures" / "tce_statements.yaml"
+    )
     assert fixtures_file.is_file(), f"Missing fixtures file: {fixtures_file}"
 
     data = yaml.safe_load(fixtures_file.read_text(encoding="utf-8"))
@@ -342,7 +351,9 @@ def test_20_fixture_statements_contract_and_determinism() -> None:
 
 def test_domain_monotonicity() -> None:
     """FR-3: A clearly more complex statement scores >= a simpler one in the same domain."""
-    fixtures_file = Path(__file__).resolve().parents[2] / "fixtures" / "tce_statements.yaml"
+    fixtures_file = (
+        Path(__file__).resolve().parents[2] / "fixtures" / "tce_statements.yaml"
+    )
     data = yaml.safe_load(fixtures_file.read_text(encoding="utf-8"))
     statements: list[dict[str, Any]] = data["statements"]
 
@@ -373,3 +384,134 @@ def test_domain_monotonicity() -> None:
                 f"Monotonicity violation in domain '{domain}': "
                 f"level '{level_next}' ({s_next:.4f}) < level '{level_curr}' ({s_curr:.4f})"
             )
+
+
+# ---------------------------------------------------------------------------
+# 7. Statement context marker splitting & exclusion tests (FR-1, FR-2, FR-3, FR-24)
+# ---------------------------------------------------------------------------
+def test_split_statement() -> None:
+    """FR-1, FR-2, FR-3: split_statement splits on first marker occurrence with fallback."""
+    marker = "### CONTEXT"
+
+    # 1. Standard statement with instruction and context
+    inst, ctx = split_statement(
+        "Answer the question.\n\n### CONTEXT\n\n[Doc 1] Paragraph text.", marker
+    )
+    assert inst == "Answer the question."
+    assert ctx == "[Doc 1] Paragraph text."
+
+    # 2. Absent marker leaves instruction as whole statement, context empty
+    inst, ctx = split_statement("Answer the question alone.", marker)
+    assert inst == "Answer the question alone."
+    assert ctx == ""
+
+    # 3. Empty marker leaves instruction as whole statement
+    inst, ctx = split_statement("Some task statement", "")
+    assert inst == "Some task statement"
+    assert ctx == ""
+
+    # 4. Empty instruction part before marker falls back to whole statement
+    inst, ctx = split_statement("### CONTEXT\n\n[Doc 1] Paragraph text.", marker)
+    assert inst == "### CONTEXT\n\n[Doc 1] Paragraph text."
+    assert ctx == ""
+
+    # 5. Whitespace-only instruction part before marker falls back to whole statement
+    inst, ctx = split_statement(
+        "   \n\t  \n### CONTEXT\n\n[Doc 1] Paragraph text.", marker
+    )
+    assert inst == "   \n\t  \n### CONTEXT\n\n[Doc 1] Paragraph text."
+    assert ctx == ""
+
+    # 6. Multiple occurrences: splits strictly on the first occurrence
+    inst, ctx = split_statement(
+        "Instruction\n### CONTEXT\nPara 1\n### CONTEXT\nPara 2", marker
+    )
+    assert inst == "Instruction"
+    assert ctx == "Para 1\n### CONTEXT\nPara 2"
+
+
+def test_statement_with_ten_long_paragraphs_identical_to_instruction_alone() -> None:
+    """FR-1, FR-2, FR-3: Ten long context paragraphs after marker produce identical mvts and subscores to instruction alone."""
+    cfg = load_complexity_config()
+    instruction = (
+        "1. Build an asynchronous web scraper for API documentation.\n"
+        "2. Extract endpoints and request parameters.\n"
+        "3. Generate OpenAPI 3.0 specification files."
+    )
+
+    ten_paragraphs = [
+        f"[Paragraph {i}] The fast brown fox jumps over the lazy dog repeatedly to simulate long context paragraphs "
+        f"discussing technical specifications, API structures, architectural trade-offs, and data schemas for component {i}."
+        for i in range(1, 11)
+    ]
+    context_text = "\n\n".join(ten_paragraphs)
+    statement_with_context = f"{instruction}\n\n{cfg.context_marker}\n\n{context_text}"
+
+    clear_decision_log()
+    est_alone = estimate(instruction, config=cfg)
+    alone_log = get_decision_log()[-1]
+
+    clear_decision_log()
+    est_with_context = estimate(statement_with_context, config=cfg)
+    context_log = get_decision_log()[-1]
+
+    # Identical MVTS, sub-scores, contributions, and subtasks
+    assert est_with_context.mvts == est_alone.mvts
+    assert est_with_context.subscores.subtask_count == est_alone.subscores.subtask_count
+    assert (
+        est_with_context.subscores.skill_clusters == est_alone.subscores.skill_clusters
+    )
+    assert (
+        abs(est_with_context.subscores.dep_density - est_alone.subscores.dep_density)
+        < 1e-6
+    )
+    assert est_with_context.subtasks == est_alone.subtasks
+    assert est_with_context.contributions == est_alone.contributions
+
+    # Verify decision log context_chars_excluded accounting (FR-24)
+    assert alone_log.inputs.get("context_chars_excluded") == 0
+    assert context_log.inputs.get("context_chars_excluded") == len(context_text)
+    assert (context_log.inputs.get("context_chars_excluded") or 0) > 0
+
+
+def test_absent_marker_leaves_behaviour_unchanged() -> None:
+    """FR-1, FR-2, FR-3: Absent context marker leaves estimator behaviour and sub-scores unchanged."""
+    cfg = load_complexity_config()
+    statement = "Write a python function to check if a string is a palindrome."
+
+    clear_decision_log()
+    est = estimate(statement, config=cfg)
+    record = get_decision_log()[-1]
+
+    assert est.mvts >= 1
+    assert est.subscores.subtask_count >= 1
+    assert "fell back" not in est.justification.lower()
+    assert record.inputs.get("context_chars_excluded") == 0
+
+
+def test_empty_instruction_falls_back_with_justification() -> None:
+    """FR-1, FR-2, FR-3, FR-24: Empty instruction before marker falls back to whole statement and says so in justification."""
+    cfg = load_complexity_config()
+    raw_statement = f"{cfg.context_marker}\n\nFirst design architecture. Next implement raft. Then add logging."
+
+    clear_decision_log()
+    est = estimate(raw_statement, config=cfg)
+    record = get_decision_log()[-1]
+
+    # Verifies fallback in justification string (FR-24)
+    assert (
+        "fell back" in est.justification.lower()
+        or "fallback" in est.justification.lower()
+    )
+    assert "empty instruction" in est.justification.lower()
+    assert record.inputs.get("context_chars_excluded") == 0
+
+    # Whitespace before marker also falls back
+    ws_statement = f"   \n\t  {cfg.context_marker}\n\nFirst design architecture. Next implement raft. Then add logging."
+    est_ws = estimate(ws_statement, config=cfg)
+    assert (
+        "fell back" in est_ws.justification.lower()
+        or "fallback" in est_ws.justification.lower()
+    )
+    assert est_ws.mvts == est.mvts
+    assert est_ws.subscores == est.subscores
