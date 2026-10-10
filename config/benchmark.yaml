@@ -35,17 +35,21 @@ datasets:
     path: "google-research-datasets/mbpp"
     name: "sanitized"
     split: "test"
+    revision: "4bb6404fdc6cacfda99d4ac4205087b89d32030c"
   humaneval:
-    path: "openai_humaneval"
+    path: "openai/openai_humaneval"
     split: "test"
+    revision: "7dce6050a7d6d172f3cc5c32aa97f52fa1a2e544"
   hotpotqa:
-    path: "hotpot_qa"
+    path: "hotpotqa/hotpot_qa"
     name: "distractor"
     split: "validation"
+    revision: "1908d6afbbead072334abe2965f91bd2709910ab"
   gsm8k:
-    path: "gsm8k"
+    path: "openai/gsm8k"
     name: "main"
     split: "test"
+    revision: "740312add88f781978c0658806c59bc2815b9866"
 
 # Output destination for ingested task records
 output_path: "data/tasks.jsonl"
