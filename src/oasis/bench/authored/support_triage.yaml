@@ -1,0 +1,504 @@
+# DRAFT: I will review and edit all 40 myself before they count as final.
+#
+# Complexity Rubric for support_triage:
+# - low (7 tasks): One step, one skill. Straightforward categorization, metadata extraction, or direct rule application.
+# - medium (7 tasks): Moderate multi-step workflow. Coordination or synthesis across 2-3 steps or skills (e.g. cross-referencing logs with policy, resolving billing disputes, multi-issue triage).
+# - high (6 tasks): Several dependent steps, different skills, conflict resolution, technical root-cause investigation, or multi-stakeholder incident management.
+
+- task_id: support_triage_001
+  statement: |
+    Classify the priority level and target engineering queue for the inbound customer bug report below according to standard triage guidelines.
+    
+    ### CONTEXT
+    Inbound Ticket #8841:
+    User states: When I click the user profile icon on the top navigation bar, the dropdown menu fails to display my uploaded avatar image, showing a broken placeholder square instead. The rest of the profile dropdown works fine and links navigate correctly. Browser is Chromium on desktop Linux.
+    
+    Triage Guidelines:
+    - P1 (Critical): System-wide outage, data loss, or core transactional path blocked. Queue: SRE / Infrastructure.
+    - P2 (Major): High-impact functional regression affecting multiple users with no workaround. Queue: Core Backend.
+    - P3 (Normal): Minor visual defect, cosmetic UI bug, or localized inconvenience with functional workaround. Queue: Frontend UI.
+    - P4 (Low): Cosmetic suggestion, typo in documentation, or non-functional polish. Queue: Product Documentation.
+  reference_answer: |
+    - Assign ticket priority level P3 Normal based on localized cosmetic UI impact
+    - Route ticket to the Frontend UI engineering queue
+    - Note reproduction details including Chromium browser on desktop Linux environment
+    - Confirm that the defect does not block navigation or core account functionality
+  complexity_label: low
+
+- task_id: support_triage_002
+  statement: |
+    Evaluate the customer refund request against the company return policy and determine eligibility.
+    
+    ### CONTEXT
+    Customer Case #1042:
+    Order Date: August 10, 2026
+    Delivery Date: August 14, 2026
+    Refund Request Date: August 28, 2026
+    Product: Wireless Sensor Node Accessory Pack
+    Condition: Sealed in original factory packaging, unopened
+    Customer Note: Ordered an extra unit by mistake during project setup.
+    
+    Return Policy Rules:
+    1. Returns must be requested within 30 calendar days of documented delivery.
+    2. Items must be unopened in original factory condition for a full refund.
+    3. Custom firmware devices and personalized items are strictly non-refundable.
+    4. Hardware accessories meeting conditions 1 and 2 receive a 100 percent refund to original payment method.
+  reference_answer: |
+    - Confirm request is submitted 14 days post-delivery well within the 30-day window
+    - Verify product is unopened in original factory packaging satisfying condition 2
+    - Determine that the customer is eligible for a full 100 percent refund
+    - Specify that reimbursement will issue to the original payment method
+  complexity_label: low
+
+- task_id: support_triage_003
+  statement: |
+    Analyze the user inquiry regarding Single Sign-On (SSO) activation and explain account requirements based on product tier specifications.
+    
+    ### CONTEXT
+    Customer Inquiry #3391:
+    Account ID: Starter-Plan-771
+    Question: We are trying to configure SAML-based SSO for our workspace team, but the SSO configuration toggle in the Security tab is disabled with a gray lock icon. How can we enable it?
+    
+    Product Tier Specifications:
+    - Starter Tier: Up to 5 team members, standard password authentication, community forum support.
+    - Professional Tier: Up to 25 team members, standard password auth, two-factor authentication enforcement, business hours support.
+    - Enterprise Tier: Unlimited team members, SAML 2.0 and OIDC Single Sign-On, custom role-based permissions, 24/7 dedicated support.
+  reference_answer: |
+    - Identify that the customer is currently subscribed to the Starter Tier
+    - Explain that SAML-based SSO functionality is exclusively available on the Enterprise Tier
+    - Direct the customer to contact sales or account management for an Enterprise upgrade
+    - Note that neither Starter nor Professional tiers support SAML configuration
+  complexity_label: low
+
+- task_id: support_triage_004
+  statement: |
+    Review the submitted customer bug report against the mandatory diagnostic intake checklist and identify all missing required items.
+    
+    ### CONTEXT
+    Bug Report #5520:
+    Title: Mobile app crashes unexpectedly on sync.
+    Body: Every time I hit the manual sync button on my tablet, the application immediately closes and returns to the home screen. This started happening yesterday afternoon. Please fix immediately.
+    
+    Mandatory Intake Checklist:
+    1. Hardware device model and manufacturer
+    2. Operating system and exact OS version number
+    3. Application version build number
+    4. Step-by-step reproduction instructions
+    5. Crash log attachment or diagnostic error code
+  reference_answer: |
+    - Identify missing hardware device model and manufacturer details
+    - Identify missing operating system and version number
+    - Identify missing application build version number
+    - Identify missing crash log file or diagnostic error code
+  complexity_label: low
+
+- task_id: support_triage_005
+  statement: |
+    Classify each of the three inbound customer support inquiries into the correct operational queue.
+    
+    ### CONTEXT
+    Inquiry A: I noticed an unexpected monthly subscription charge on my invoice despite downgrading two weeks ago.
+    Inquiry B: An automated security alert says our API token was detected in a public repository; we need immediate revocation assistance.
+    Inquiry C: Our nightly database export job timed out after 300 seconds and failed to write to cloud storage.
+    
+    Operational Queues:
+    - Billing & Accounts: Invoices, payment methods, charge disputes, tier upgrades/downgrades.
+    - Security Operations: Compromised credentials, token revocation, suspicious access, vulnerability notifications.
+    - Technical Operations: Job failures, timeouts, storage connectivity, pipeline execution errors.
+  reference_answer: |
+    - Route Inquiry A to the Billing and Accounts queue
+    - Route Inquiry B to the Security Operations queue
+    - Route Inquiry C to the Technical Operations queue
+    - Provide brief justification for each routing decision based on issue type
+  complexity_label: low
+
+- task_id: support_triage_006
+  statement: |
+    Categorize the primary cancellation driver from the user exit feedback, assign the appropriate taxonomy tag, and route the feedback digest.
+    
+    ### CONTEXT
+    User Exit Survey Response #209:
+    User comment: We loved the initial prototyping capabilities and the UI design is clean, but as our team expanded from 5 to 40 engineers, our monthly bill jumped by more than 400 percent, making it completely unsustainable compared to self-hosted alternatives.
+    
+    Taxonomy Definitions:
+    - Pricing / Budget: Seat costs, overage fees, unsustainable renewal pricing.
+    - Usability / UX: Complex workflows, steep learning curve, confusing interface.
+    - Missing Capabilities: Absence of critical integrations or enterprise features.
+    - Technical Reliability: Frequent downtime, slow performance, recurring bugs.
+    
+    Departmental Routing Table:
+    - Pricing / Budget: Product Monetization working group
+    - Usability / UX: Core Experience design team
+    - Missing Capabilities: Product Management roadmap council
+    - Technical Reliability: Platform Reliability engineering pod
+  reference_answer: |
+    - Tag primary cancellation driver as Pricing or Budget
+    - Highlight team growth leading to unsustainable 400 percent cost increase
+    - Note that product usability and UI received positive feedback
+    - Route feedback digest to the Product Monetization working group
+  complexity_label: low
+
+- task_id: support_triage_007
+  statement: |
+    Determine whether the customer account lockout case qualifies for automated password reset or requires Tier-2 security identity verification.
+    
+    ### CONTEXT
+    Lockout Case #4411:
+    User account status: Locked after 5 consecutive failed password attempts.
+    User registered email: accessible and verified via secondary code.
+    Registered recovery phone: not configured on account.
+    Hardware security key: not enrolled.
+    Recent activity: Attempted login originated from the same recognized home IP address and browser fingerprint used for the past 6 months.
+    
+    Account Recovery Policy:
+    - Automated Reset Allowed: Account locked due to failed attempts IF registered primary email is accessible AND login originates from a recognized device/IP with no active security flags.
+    - Tier-2 Verification Required: Any lockout involving unverified primary email, unrecognized IP geolocations, or suspicious credential stuffing flags.
+  reference_answer: |
+    - Confirm that user primary email is verified and accessible via secondary code
+    - Verify that login origin matches the recognized IP address and browser fingerprint
+    - Authorize automated self-service password reset link dispatch
+    - State that Tier-2 manual identity verification escalation is not required
+  complexity_label: low
+
+- task_id: support_triage_008
+  statement: |
+    Investigate the customer billing dispute regarding API overage fees during an internal platform maintenance window, calculate the eligible adjustment credit, and draft a response summary.
+    
+    ### CONTEXT
+    Customer Dispute #901:
+    Tenant: AlphaLogistics Workspace
+    Disputed Line Item: 25,000 excess API requests billed at $0.002 per request (Total: $50.00).
+    Incident Date: September 3, 2026, from 02:00 UTC to 04:00 UTC.
+    
+    Platform Maintenance Log:
+    - 02:00 to 03:30 UTC: Scheduled database migration. During this window, an internal gateway loop caused retry storms that artificially duplicated inbound webhook calls.
+    - Tenant activity audit shows 18,000 of the 25,000 requests occurred between 02:00 and 03:30 UTC and were confirmed duplicate retry loops caused by platform latency.
+    - The remaining 7,000 requests occurred between 03:31 and 04:00 UTC and represent legitimate customer application calls.
+    
+    Billing Adjustment Policy:
+    Charges resulting directly from verified internal infrastructure anomalies or retry storms must be 100 percent credited back to the customer balance.
+  reference_answer: |
+    - Identify 18,000 requests as invalid retry duplicates caused by internal platform maintenance
+    - Calculate credit amount of $36.00 corresponding to the 18,000 anomalous requests at $0.002 rate
+    - Confirm that 7,000 requests were legitimate customer calls and remain payable at $14.00
+    - Outline a clear credit adjustment memorandum to apply to the next billing statement
+    - Provide a polite technical explanation acknowledging the maintenance window retry storm
+  complexity_label: medium
+
+- task_id: support_triage_009
+  statement: |
+    Triage an intermittent webhook delivery failure report, identify the underlying HTTP configuration error from the payload logs, and provide developer remediation steps.
+    
+    ### CONTEXT
+    Support Ticket #6620:
+    Customer: CloudMetrics Integration Team
+    Report: Inbound webhooks from your notification service started failing intermittently with error status around 30 percent of the time over the past 48 hours.
+    
+    Attached Dispatch Logs:
+    Dispatch Attempt 1: Endpoint returns HTTP 200 OK (Latency: 120ms).
+    Dispatch Attempt 2: Endpoint returns HTTP 429 Too Many Requests (Response Header: Retry-After: 60, Body: 'Rate limit of 10 requests per second exceeded').
+    Dispatch Attempt 3: Endpoint returns HTTP 429 Too Many Requests.
+    Dispatch Attempt 4: Endpoint returns HTTP 200 OK after customer queue cleared.
+    
+    Platform Webhook Spec:
+    Default dispatch concurrency is up to 25 simultaneous webhook threads per tenant unless custom concurrency throttling is enabled in webhook settings.
+  reference_answer: |
+    - Diagnose the root cause as HTTP 429 rate limiting enforced by the customer endpoint
+    - Identify customer endpoint capacity limit of 10 requests per second being exceeded by 25 concurrent threads
+    - Instruct the customer to configure outbound concurrency throttling in their webhook settings
+    - Recommend customer implement queue buffering or increase endpoint rate limits to absorb bursts
+    - Confirm that webhook dispatch service is functioning normally and respecting backoff
+  complexity_label: medium
+
+- task_id: support_triage_010
+  statement: |
+    Evaluate the suspicious account activity alerts, determine if an unauthorized account compromise occurred, apply safety protocol actions, and outline recovery instructions.
+    
+    ### CONTEXT
+    Security Alert Incident #7712:
+    Target Account: DevLead-User-84
+    Timeline:
+    - 14:02 UTC: Successful session login from City Alpha (User habitual location, Known device macOS).
+    - 14:18 UTC: Password change request initiated and confirmed via recovery email.
+    - 14:22 UTC: Successful login from City Beta (Distance: 6,500 km, Unknown Linux device, Unrecognized VPN IP).
+    - 14:25 UTC: New API full-access key generated and downloaded from City Beta session.
+    
+    Compromise Protocol:
+    1. If a session originating from an unrecognized IP and impossible travel distance generates credentials immediately following a password change, flag as High-Confidence Compromise.
+    2. Immediately revoke all active sessions and disable all API keys generated within the last 24 hours.
+    3. Place account in suspended recovery status and initiate mandatory identity re-verification.
+  reference_answer: |
+    - Classify incident as high-confidence account compromise due to impossible travel and unauthorized API key generation
+    - Execute immediate revocation of all active user sessions across all devices
+    - Invalidate and delete the newly generated API full-access key
+    - Place the account into temporary security quarantine status
+    - Formulate user remediation checklist including credential reset and mandatory identity re-verification
+  complexity_label: medium
+
+- task_id: support_triage_011
+  statement: |
+    Process a complex multi-issue e-commerce support case involving shipping delays, a damaged product, and an incorrect item, formulating itemized solutions per customer protection guidelines.
+    
+    ### CONTEXT
+    Customer Case #8819:
+    Order #55201 contained three items:
+    - Item 1: High-Speed Ethernet Switch ($180) - Arrived 8 days late, shipping box crushed, internal circuit board cracked and non-functional.
+    - Item 2: Cat6 Patch Cable Bundle ($25) - Received incorrect 1-meter length instead of ordered 3-meter length, package unopened.
+    - Item 3: Rack Mount Hardware Kit ($30) - Arrived intact, correct specification, in use.
+    
+    Remedy Policy:
+    - Damaged in Transit: Immediate free replacement or full refund without requiring return of defective hardware if photographic proof is verified.
+    - Incorrect Item Sent: Prepaid return shipping label issued; correct item dispatched immediately via expedited freight.
+    - Shipping Delay: Standard orders arriving over 5 business days past estimated date receive a $20 store courtesy credit.
+  reference_answer: |
+    - Issue immediate full refund or replacement authorization for the $180 damaged Ethernet Switch
+    - Generate prepaid return label and dispatch expedited replacement for the Cat6 cable bundle
+    - Confirm the $30 rack mount hardware kit remains accepted with no action needed
+    - Grant a $20 store courtesy credit for the verified 8-day shipping delay
+    - Synthesize all actions into an itemized, empathetic customer resolution message
+  complexity_label: medium
+
+- task_id: support_triage_012
+  statement: |
+    Reconcile contradictory assertions between a customer equipment warranty claim and an on-site technician inspection report to determine repair cost liability.
+    
+    ### CONTEXT
+    Warranty Dispute #3388:
+    Equipment: Industrial Thermal Controller Model-K
+    Customer Claim: Device stopped powering on during normal operation within the 1-year warranty period. Demands 100 percent covered warranty replacement.
+    
+    Technician Inspection Report:
+    - Unit casing exhibits no external physical impact.
+    - Internal inspection reveals extensive moisture oxidation and water mineral deposits across the primary power supply board.
+    - Device seals: Broken ingress protection seal on top venting port.
+    
+    Warranty Terms & Conditions:
+    - Section 4.1: Covers internal component failure under standard operating conditions.
+    - Section 4.5: Explicitly excludes liquid ingress, environmental contamination, or operation outside IP54 moisture ratings.
+    - Section 5.2: In cases of customer-induced liquid damage, customer is liable for parts and labor, but may receive a 25 percent out-of-warranty repair discount.
+  reference_answer: |
+    - Cite technician inspection findings of liquid oxidation and broken moisture seals
+    - Determine that warranty coverage is void under Section 4.5 liquid ingress exclusion
+    - Reject full warranty replacement claim while explaining the physical evidence clearly
+    - Offer the customer the Section 5.2 out-of-warranty repair option with 25 percent discount
+    - Provide itemized repair quote and clear instructions for approving work authorization
+  complexity_label: medium
+
+- task_id: support_triage_013
+  statement: |
+    Triage a formal GDPR data erasure request from a former client whose account has an active financial chargeback audit, resolving regulatory tensions and specifying the retention roadmap.
+    
+    ### CONTEXT
+    Compliance Ticket #1190:
+    Customer: User-Account-512
+    Request: Full erasure of all personal data, transaction records, and communication logs under GDPR Article 17 (Right to Erasure).
+    
+    Account Status Audit:
+    - Subscription cancelled 15 days ago.
+    - Two active credit card chargeback disputes totaling $450 are pending bank arbitration (expected resolution: 60 days).
+    
+    Legal & Regulatory Retention Standards:
+    - GDPR Article 17(3)(b) & (e): Personal data erasure may be restricted or delayed to the extent processing is necessary for compliance with a legal obligation or the establishment, exercise, or defense of legal claims.
+    - Payment Card Industry and banking rules require transaction and access logs to be retained until all active chargeback arbitrations conclude.
+    - Non-financial marketing profile data, analytics tracking, and secondary communication preferences must be purged immediately upon request.
+  reference_answer: |
+    - Identify legal exception under GDPR Article 17 for ongoing defense of financial chargebacks
+    - Authorize immediate purge of non-essential personal marketing data and communication preferences
+    - Place temporary legal hold on financial transaction records and dispute-relevant access logs
+    - Establish automated scheduled erasure for retained records upon conclusion of bank arbitration
+    - Draft formal GDPR compliance response explaining legal basis and itemized retention schedule
+  complexity_label: medium
+
+- task_id: support_triage_014
+  statement: |
+    Diagnose a permission deadlock where an enterprise workspace administrator cannot transfer organization ownership, and author sequential resolution guidance.
+    
+    ### CONTEXT
+    Escalation Ticket #4812:
+    Customer: Enterprise Admin-User-01
+    Problem: When attempting to transfer primary ownership to Admin-User-02, the transfer button returns error code ERR_TRANSFER_BLOCKED_PENDING_SEATS.
+    
+    Workspace Configuration Dump:
+    - Total Purchased Seats: 50
+    - Assigned Active Seats: 50
+    - Pending Invitations: 3 unaccepted user invites outstanding
+    - Target Owner Status: Currently designated as standard member with pending admin upgrade invitation unaccepted.
+    
+    Platform Architecture Rules:
+    1. Ownership transfer requires target user to already possess an active, accepted Administrator role.
+    2. Ownership transfer verifies that workspace seat consumption does not exceed purchased capacity (active members plus outstanding pending invitations).
+    3. Workspaces at 53/50 committed seats cannot modify organizational hierarchy until over-allocation is resolved.
+  reference_answer: |
+    - Identify seat over-allocation with 50 active seats plus 3 pending invites exceeding 50 purchased seats
+    - Identify that target user has not yet accepted the Administrator role upgrade
+    - Direct admin to revoke at least 3 pending invitations or purchase additional seat licenses
+    - Instruct target user to accept the Administrator role invitation prior to transfer attempt
+    - Outline sequential step-by-step instructions to execute the ownership transfer cleanly
+  complexity_label: medium
+
+- task_id: support_triage_015
+  statement: |
+    Manage a major multi-tenant database connection pool exhaustion incident: evaluate tenant SLA tiers, determine executive briefing priority, and author customer mitigation bulletins.
+    
+    ### CONTEXT
+    Critical Incident #9901:
+    Timeline:
+    - 08:12 UTC: Regional Database Cluster-East connection pool saturated at 100 percent utilization.
+    - 08:15 UTC: Query response times degrade from 45ms to 12,000ms; HTTP 504 gateway timeouts spike to 42 percent.
+    - Affected: 120 tenants hosted on Shared Cluster-East.
+    
+    Tenant Breakdown:
+    - Tier-1 Enterprise (5 tenants): Strict 99.99 percent uptime SLA, contractual penalty of $5,000 per 15 minutes of outage, dedicated communication liaison required within 15 minutes.
+    - Tier-2 Business (35 tenants): 99.9 percent SLA, notification within 60 minutes.
+    - Tier-3 Standard (80 tenants): Best-effort SLA, status page update.
+    
+    Root Cause Diagnostic:
+    A runaway analytical query initiated by a background reporting worker failed to release connections, locking worker threads across the shared connection pool.
+  reference_answer: |
+    - Declare Critical incident and mobilize dedicated engineering and customer liaison teams
+    - Immediately isolate and kill the runaway analytical query process to drain connection pool
+    - Prioritize immediate dedicated outreach to the 5 Tier-1 Enterprise tenants within 15 minutes
+    - Publish public status page incident banner for Tier-2 and Tier-3 tenants
+    - Calculate initial SLA downtime breach exposure across Enterprise tier accounts
+    - Formulate interim executive briefing summarizing root cause and containment steps
+    - Draft external post-incident remediation bulletin outlining permanent query timeout guards
+  complexity_label: high
+
+- task_id: support_triage_016
+  statement: |
+    Perform forensic analysis on an enterprise database schema synchronization failure across replicated regional nodes, evaluate data divergence impact, and coordinate rollback versus patch strategy.
+    
+    ### CONTEXT
+    Incident Forensic Case #9940:
+    Environment: Global Inventory Synchronization Pipeline
+    Nodes: Primary Node (US-East), Replica Node A (EU-Central), Replica Node B (AP-South).
+    
+    Incident Telemetry:
+    - Migration script v4.12.0 executed at 01:00 UTC adding column 'inventory_reserve_lock'.
+    - US-East and EU-Central applied migration successfully.
+    - AP-South failed migration at step 3 due to duplicate index constraint error, entering silent desynchronization.
+    - For 4 hours, AP-South processed 3,400 inventory updates using fallback schema v4.11.0, failing to record reservation locks.
+    - Result: 85 inventory SKUs in AP-South are currently double-allocated across regional fulfillment centers.
+  reference_answer: |
+    - Halt incoming transactional write traffic on the desynchronized AP-South regional node
+    - Identify specific failure mechanism as duplicate index constraint collision during v4.12.0 migration
+    - Isolate the 85 double-allocated inventory SKUs and freeze associated fulfillment dispatch queues
+    - Reject full database rollback to prevent losing 4 hours of valid global transactions on other nodes
+    - Author forward-patch remediation script to repair index conflict and apply schema v4.12.0 on AP-South
+    - Execute transaction reconciliation script comparing node logs to correct reservation lock states
+    - Compose technical incident debrief for engineering leadership and customer operations teams
+  complexity_label: high
+
+- task_id: support_triage_017
+  statement: |
+    Triage a zero-day remote code execution vulnerability report affecting the customer edge gateway, assess exposure radius, determine disclosure protocol, and author mitigation patch advisories.
+    
+    ### CONTEXT
+    Vulnerability Triage Case #SEC-004:
+    Severity Assessment: Critical (CVSS 9.8).
+    Reported Vector: Buffer overflow in open-source edge proxy library (Component: ProxyCore v2.4.1).
+    Exploitability: Remote, unauthenticated HTTP header parsing flaw allowing arbitrary shell payload execution.
+    Proof of Concept: Verified by internal security research team in isolated staging sandbox.
+    
+    Production Footprint:
+    - 60 percent of enterprise customer edge routers run ProxyCore v2.4.1.
+    - 40 percent run modern ProxyCore v3.1.0 which is immune to this vulnerability.
+    - Vendor has not released a public patch; estimated upstream fix timeline is 72 hours.
+    
+    Emergency Vulnerability Protocol:
+    1. Assess whether WAF rules or reverse-proxy filters can block exploit patterns without downtime.
+    2. Maintain strict embargo on public disclosure until customer defensive mitigations are active.
+    3. Deploy hotfix configuration or mitigation rule across managed infrastructure within 2-hour SLA.
+  reference_answer: |
+    - Classify vulnerability severity as Critical CVSS 9.8 Remote Code Execution
+    - Map production attack surface identifying 60 percent of edge routers running vulnerable v2.4.1
+    - Formulate and test custom WAF payload inspection filter to drop malicious header patterns
+    - Deploy emergency WAF mitigation rule across all managed edge nodes within 2-hour SLA
+    - Maintain strict confidential disclosure embargo to prevent exploit weaponization
+    - Author private emergency security bulletin for enterprise self-hosted customers with mitigation steps
+    - Establish tracking matrix for verified customer patch adoption prior to public advisory
+  complexity_label: high
+
+- task_id: support_triage_018
+  statement: |
+    Audit six months of chronic service degradation against an enterprise Master Services Agreement (MSA), reconcile engineering performance data with commercial sales promises, and formulate a structured settlement plan.
+    
+    ### CONTEXT
+    Commercial Escalation #8872:
+    Customer: Global Logistics Enterprise Corp
+    Contract: Annual Value $600,000 ($50,000 monthly).
+    Commitment: 99.95 percent monthly uptime measured per calendar month.
+    Breach Clause: 10 percent credit for uptime between 99.5% and 99.95%; 25 percent credit for uptime between 99.0% and 99.5%; 50 percent credit below 99.0%.
+    
+    Audit Findings Over Past 6 Months:
+    - Month 1: 99.98% (No breach)
+    - Month 2: 99.40% (Outage duration: 4.3 hours) -> 25% credit tier
+    - Month 3: 99.96% (No breach)
+    - Month 4: 98.80% (Outage duration: 8.6 hours) -> 50% credit tier
+    - Month 5: 99.60% (Outage duration: 2.9 hours) -> 10% credit tier
+    - Month 6: 99.97% (No breach)
+    Customer demands immediate 100 percent refund of all 6 months ($300,000) or threatens legal termination.
+    Sales team informally promised an ad-hoc 99.99 percent uptime SLA during renewal talks.
+    Executive leadership authorizes offering up to a $20,000 renewal discount alongside contractual credits to secure contract extension.
+  reference_answer: |
+    - Calculate exact contractual service credits for Month 2 ($12,500), Month 4 ($25,000), and Month 5 ($5,000)
+    - Determine total contractual SLA credit liability of $42,500 under the legally binding MSA
+    - Reject customer demand for $300,000 full refund as inconsistent with contractual breach clauses
+    - Clarify that informal sales verbal promises do not supersede written MSA terms
+    - Propose a commercial settlement combining $42,500 contractual credits plus $20,000 renewal discount
+    - Note that Months 1, 3 and 6 had no breach (99.98, 99.96, 99.97 percent) and earn no credit
+    - Draft formal executive mediation briefing for legal counsel and executive leadership
+  complexity_label: high
+
+- task_id: support_triage_019
+  statement: |
+    Triage an accidental cross-border telemetry routing incident violating data residency regulations, isolate non-compliant data streams, coordinate engineering rollbacks, liaise with the Data Protection Officer, and author the regulatory disclosure memo.
+    
+    ### CONTEXT
+    Data Compliance Incident #REG-901:
+    Incident: Telemetry router deployment v3.8.1 configured a backup metrics pipeline that redirected analytics payloads from EU-West database servers to an analytics cluster situated in North America.
+    Data Involved: Application performance metrics containing obfuscated IP addresses (obfuscated IPs), system logs, and partial user agent strings of 14,000 European users (with no plaintext PII).
+    Duration: Active for 72 hours before detection by automated compliance monitor.
+    Last stable release: v3.8.0
+    
+    Regulatory Context:
+    - Strict regional data sovereignty mandates prohibit transfer of personal or identifiable pseudonymous data outside the EU zone without explicit contractual standard clauses.
+    - Mandatory breach notification threshold requires assessment of user harm and regulatory notification within 72 hours of formal confirmation if high risk is identified.
+    - Governance Protocol: Consult with the Data Protection Officer to assess statutory reporting threshold under EU regulations.
+  reference_answer: |
+    - Immediately terminate cross-border replication pipeline and revert router to v3.8.0 configuration
+    - Issue secure purge order for all European telemetry payloads replicated to the North American cluster
+    - Perform data categorization audit to confirm payloads contained obfuscated IPs rather than plaintext PII
+    - Coordinate with Data Protection Officer to assess statutory reporting threshold under EU regulations
+    - Determine that the 72-hour notification clock runs from formal confirmation of high risk, so a risk assessment must come first, and the incident itself ran 72 hours before detection
+    - Prepare formal regulatory notification dossier detailing timeline, containment, and root cause
+    - Author customer-facing transparency advisory explaining procedural safeguards against recurrence
+  complexity_label: high
+
+- task_id: support_triage_020
+  statement: |
+    Synthesize critical industrial fleet telematics sensor anomalies, isolate firmware regression causes, execute recall versus OTA emergency patch decision protocols, and formulate multi-agency safety notifications.
+    
+    ### CONTEXT
+    Safety Investigation #FLT-009:
+    Fleet: 4,500 Autonomous Warehouse Transport Drones
+    Anomaly Report: Over the last 48 hours, 14 drones experienced sudden emergency braking activation in high-speed transport lanes, causing 3 cargo spills and 1 facility structural barrier collision.
+    
+    Telemetry Sensor Analysis:
+    - Firmware version 5.4.2 was pushed over-the-air to 1,200 drones on Monday.
+    - All 14 incident drones ran firmware v5.4.2; zero incidents observed among the 3,300 drones running v5.4.1.
+    - LIDAR obstacle sensor driver logs reveal integer overflow in distance calculation occurring when ambient temperature exceeds 32 degrees Celsius, registering false-positive 0.1-meter obstacle distance.
+    
+    Safety Governance Policy:
+    - Category-A Hazard: Uncommanded motion or emergency stop with collision potential requires immediate fleet-wide grounding of affected firmware units within 60 minutes.
+    - Remediation Protocol: Evaluate whether rollback to prior certified firmware version is deployable over-the-air within 4 hours.
+  reference_answer: |
+    - Declare Category-A Safety Hazard due to collision risk from uncommanded emergency braking
+    - Issue immediate operational grounding order for all 1,200 transport units running firmware v5.4.2
+    - Identify root cause as integer overflow in LIDAR obstacle distance driver above 32 degrees Celsius
+    - Authorize emergency automated over-the-air rollback to certified stable firmware v5.4.1
+    - Define a pre-release validation gate covering high-temperature stress testing
+    - Author industrial safety regulatory notification detailing telemetry findings and corrective actions
+    - Draft warehouse operations bulletin instructing facility teams on manual staging and clearing protocols
+    - Establish an engineering watch to verify fleet rollback compliance
+  complexity_label: high

@@ -12,6 +12,8 @@ domain_counts:
   code_generation: 20
   research_qa: 20
   quant_analysis: 20
+  support_triage: 20
+  content_generation: 20
 
 # Allocation of tasks across benchmark data sources within each domain
 source_allocation:
@@ -22,6 +24,10 @@ source_allocation:
     hotpotqa: 20
   quant_analysis:
     gsm8k: 20
+  support_triage:
+    authored: 20
+  content_generation:
+    authored: 20
 
 # HuggingFace datasets specifications for live ingestion
 datasets:
