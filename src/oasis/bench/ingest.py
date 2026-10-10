@@ -488,11 +488,6 @@ def load_raw_from_huggingface(
         If HuggingFace `datasets` package is not installed.
     """
     try:
-        import httpx
-        import huggingface_hub.utils
-
-        if not hasattr(huggingface_hub.utils, "httpx"):
-            setattr(huggingface_hub.utils, "httpx", httpx)
         from datasets import (  # type: ignore[import-not-found,import-untyped]
             load_dataset,
         )
