@@ -219,7 +219,14 @@ def transform_raw_to_task(
         instruction_text = str(raw.get("text", raw.get("prompt", ""))).strip()
         code = str(raw.get("code", "")).strip()
         test_list = raw.get("test_list", [])
-        test_setup = raw.get("test_setup_code", "")
+        test_setup = raw.get("test_setup_code")
+        if not test_setup:
+            test_imports = raw.get("test_imports", [])
+            test_setup = (
+                "\n".join(test_imports)
+                if isinstance(test_imports, list)
+                else str(test_imports)
+            )
         test_code = (
             "\n".join(test_list) if isinstance(test_list, list) else str(test_list)
         )
@@ -481,6 +488,11 @@ def load_raw_from_huggingface(
         If HuggingFace `datasets` package is not installed.
     """
     try:
+        import httpx
+        import huggingface_hub.utils
+
+        if not hasattr(huggingface_hub.utils, "httpx"):
+            setattr(huggingface_hub.utils, "httpx", httpx)
         from datasets import (  # type: ignore[import-not-found,import-untyped]
             load_dataset,
         )
@@ -496,10 +508,13 @@ def load_raw_from_huggingface(
     path = ds_params.get("path", source)
     name = ds_params.get("name", None)
     split = ds_params.get("split", "test")
+    revision = ds_params.get("revision", None)
 
     kwargs: dict[str, Any] = {"split": split}
     if name:
         kwargs["name"] = name
+    if revision:
+        kwargs["revision"] = revision
 
     dataset = load_dataset(path, **kwargs)
     return [dict(item) for item in dataset]
@@ -552,6 +567,7 @@ def sample_raw_data(
     raw_items: list[dict[str, Any]],
     count: int,
     seed: int = 42,
+    fail_if_insufficient: bool = False,
 ) -> list[dict[str, Any]]:
     """Sample raw records deterministically using a seeded RNG.
 
@@ -566,6 +582,8 @@ def sample_raw_data(
         Target number of records to sample.
     seed:
         RNG seed value.
+    fail_if_insufficient:
+        If True, raises ValueError when the available pool is smaller than count.
 
     Returns
     -------
@@ -584,7 +602,14 @@ def sample_raw_data(
         return json.dumps(item, sort_keys=True)
 
     sorted_items = sorted(raw_items, key=sort_key)
-    if len(sorted_items) <= count:
+    if len(sorted_items) < count:
+        if fail_if_insufficient:
+            raise ValueError(
+                f"Requested {count} items but dataset pool only contains {len(sorted_items)} items."
+            )
+        return sorted_items
+
+    if len(sorted_items) == count:
         return sorted_items
 
     rng = random.Random(seed)
@@ -660,7 +685,12 @@ def assign_splits(
             return (h, tid)
 
         ranked = sorted(unassigned, key=task_rank_key)
-        num_calib = round(len(ranked) * calibration_fraction)
+        total_calib_target = round(len(domain_tasks) * calibration_fraction)
+        existing_calib_count = sum(
+            1 for t in domain_tasks if known_splits.get(t["task_id"]) == "calibration"
+        )
+        needed_calib = max(0, total_calib_target - existing_calib_count)
+        num_calib = min(len(ranked), needed_calib)
         calib_ids = {t["task_id"] for t in ranked[:num_calib]}
 
         for task_item in unassigned:
@@ -1008,10 +1038,19 @@ def ingest_benchmarks(
                     )
                 raw_items = valid_items
 
+            if not use_fixtures and len(raw_items) < sample_count:
+                raise ValueError(
+                    f"Dataset pool for source '{source}' is too small after filtering: "
+                    f"requested {sample_count} items, but only {len(raw_items)} valid records available."
+                )
+
             # Seeded deterministic sampling with stable sha256-derived seed
             src_seed = derive_stable_seed(seed, source)
             sampled_items = sample_raw_data(
-                raw_items, count=sample_count, seed=src_seed
+                raw_items,
+                count=sample_count,
+                seed=src_seed,
+                fail_if_insufficient=not use_fixtures,
             )
 
             for idx, raw in enumerate(sampled_items):

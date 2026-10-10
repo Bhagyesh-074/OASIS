@@ -642,8 +642,58 @@ def test_cli_all_with_fixtures(tmp_path: Path, fixtures_dir: Path) -> None:
     assert len(records) > 0
 
 
+
 # ---------------------------------------------------------------------------
-# 5. Marker for real download (skipped by default)
+# 5. Real dataset shape parsing & pool validation (offline)
+# ---------------------------------------------------------------------------
+def test_mbpp_real_dataset_shape_transformation(fixtures_dir: Path) -> None:
+    """Parse MBPP records in the real HuggingFace sanitized shape (prompt, test_imports)."""
+    fixture_path = fixtures_dir / "mbpp_real_shape_sample.jsonl"
+    raw_items = load_raw_from_fixture(fixture_path)
+    assert len(raw_items) == 2
+
+    # First record has non-empty test_imports
+    task1 = transform_raw_to_task(raw_items[0], source="mbpp", domain="code_generation")
+    assert task1["task_id"] == "mbpp_0011"
+    assert "Write a python function to remove first and last occurrence" in task1["statement"]
+    assert CONTEXT_MARKER in task1["statement"]
+    spec1 = json.loads(task1["verifier_spec"])
+    assert spec1["test_setup_code"] == "import math"
+    assert "assert remove_Occ" in spec1["test_code"]
+
+    # Second record has empty test_imports
+    task2 = transform_raw_to_task(raw_items[1], source="mbpp", domain="code_generation")
+    assert task2["task_id"] == "mbpp_0012"
+    assert "Write a function to sort a given matrix" in task2["statement"]
+    spec2 = json.loads(task2["verifier_spec"])
+    assert spec2["test_setup_code"] == ""
+    assert "assert sort_matrix" in spec2["test_code"]
+
+
+def test_insufficient_pool_raises_value_error() -> None:
+    """sample_raw_data with fail_if_insufficient=True raises ValueError on undersized pool."""
+    pool = [{"task_id": 1, "prompt": "p1"}, {"task_id": 2, "prompt": "p2"}]
+    with pytest.raises(ValueError, match="pool is too small|contains 2 items"):
+        sample_raw_data(pool, count=5, seed=42, fail_if_insufficient=True)
+
+    # With fail_if_insufficient=False (default/fixtures mode), returns available pool without raising
+    sampled = sample_raw_data(pool, count=5, seed=42, fail_if_insufficient=False)
+    assert len(sampled) == 2
+
+
+def test_config_dataset_revisions_pinned() -> None:
+    """Every dataset in config/benchmark.yaml must pin an explicit 40-character commit SHA revision."""
+    cfg = load_benchmark_config()
+    for ds_key in ["mbpp", "humaneval", "hotpotqa", "gsm8k"]:
+        assert ds_key in cfg.datasets, f"Missing dataset {ds_key} in benchmark.yaml"
+        ds_info = cfg.datasets[ds_key]
+        assert "revision" in ds_info, f"Dataset {ds_key} must pin revision SHA"
+        rev = ds_info["revision"]
+        assert isinstance(rev, str) and len(rev) == 40, f"Dataset {ds_key} revision must be 40-char SHA: {rev}"
+
+
+# ---------------------------------------------------------------------------
+# 6. Marker for real download (skipped by default)
 # ---------------------------------------------------------------------------
 @pytest.mark.real_download
 def test_real_download_from_huggingface() -> None:
