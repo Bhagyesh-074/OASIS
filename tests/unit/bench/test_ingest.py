@@ -273,13 +273,14 @@ def test_hotpotqa_validation_and_rejection() -> None:
         )
 
 
-def test_hotpotqa_ids_and_splits_unchanged(fixtures_dir: Path) -> None:
+def test_hotpotqa_ids_and_splits_unchanged(fixtures_dir: Path, tmp_path: Path) -> None:
     """HotpotQA distractor ingestion preserves exact task IDs and split assignments (FR-13, FR-3)."""
     tasks = ingest_benchmarks(
         domains=["research_qa"],
         fixtures_dir=fixtures_dir,
         use_fixtures=True,
         write_db=False,
+        output_path=tmp_path / "tasks.jsonl",
     )
     assert len(tasks) == 6
 
@@ -341,7 +342,7 @@ def test_gsm8k_transformation_and_numeric_extraction(fixtures_dir: Path) -> None
 
 
 def test_gsm8k_filtering_and_null_value_rejection(
-    fixtures_dir: Path, caplog: pytest.LogCaptureFixture
+    fixtures_dir: Path, caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:
     """Filter out GSM8K records with no extractable numeric answer before sampling, and reject null expected_value."""
     raw_items = load_raw_from_fixture(fixtures_dir / "gsm8k_sample.jsonl")
@@ -359,6 +360,7 @@ def test_gsm8k_filtering_and_null_value_rejection(
             fixtures_dir=fixtures_dir,
             use_fixtures=True,
             write_db=False,
+            output_path=tmp_path / "tasks.jsonl",
         )
 
     # Ingested records must all have valid numeric consistency specs
