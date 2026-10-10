@@ -358,8 +358,44 @@ def transform_raw_to_task(
             "created_at": created_at,
         }
 
+    elif source == "authored":
+        raw_tid = str(raw.get("task_id", "")).strip()
+        source_ref_opt: str | None
+        if raw_tid.startswith((f"{domain}_", f"{source}_")):
+            task_id = raw_tid
+            raw_sref = raw.get("source_ref")
+            source_ref_opt = str(raw_sref) if raw_sref is not None else None
+        elif raw_tid:
+            source_ref_opt = raw_tid
+            task_id = f"{source}_{source_ref_opt}"
+        else:
+            stmt = str(raw.get("statement", "")).strip()
+            if stmt:
+                norm_stmt = " ".join(stmt.split())
+                source_ref_opt = hashlib.sha256(norm_stmt.encode("utf-8")).hexdigest()[:10]
+                task_id = f"{source}_{source_ref_opt}"
+            else:
+                raise KeyError("Task record for source 'authored' missing task_id and statement")
+
+        return {
+            "task_id": task_id,
+            "domain": domain,
+            "source": "authored",
+            "source_ref": source_ref_opt,
+            "statement": str(raw["statement"]),
+            "reference_answer": (
+                str(raw["reference_answer"])
+                if raw.get("reference_answer") is not None
+                else None
+            ),
+            "verifier_type": None,
+            "verifier_spec": None,
+            "complexity_label": raw.get("complexity_label"),
+            "created_at": created_at,
+        }
+
     else:
-        # Fallback for generic or authored sources
+        # Fallback for generic sources
         native_id = raw.get("task_id") or raw.get("id") or raw.get("_id")
         if not native_id:
             stmt = str(
@@ -878,7 +914,13 @@ def ingest_benchmarks(
     target_domains: list[TaskDomain] = (
         domains
         if domains is not None
-        else ["code_generation", "research_qa", "quant_analysis"]
+        else [
+            "code_generation",
+            "research_qa",
+            "quant_analysis",
+            "support_triage",
+            "content_generation",
+        ]
     )
 
     # Load existing records to preserve prior split assignments (immutability invariant)
@@ -904,12 +946,30 @@ def ingest_benchmarks(
             else:
                 sample_count = src_target
 
-            raw_items = load_raw_dataset(
-                source=source,
-                config=cfg,
-                fixtures_dir=fixtures_dir,
-                use_fixtures=use_fixtures,
-            )
+            if source == "authored":
+                from oasis.bench.authored import load_authored_task_dicts
+
+                authored_file: Path | None = None
+                if fixtures_dir:
+                    candidate1 = fixtures_dir / f"{domain}.yaml"
+                    candidate2 = fixtures_dir / "authored" / f"{domain}.yaml"
+                    if candidate1.exists():
+                        authored_file = candidate1
+                    elif candidate2.exists():
+                        authored_file = candidate2
+                if authored_file is None:
+                    authored_file = (
+                        Path(__file__).resolve().parent / "authored" / f"{domain}.yaml"
+                    )
+
+                raw_items = load_authored_task_dicts(authored_file, config=cfg)
+            else:
+                raw_items = load_raw_dataset(
+                    source=source,
+                    config=cfg,
+                    fixtures_dir=fixtures_dir,
+                    use_fixtures=use_fixtures,
+                )
 
             # Filter out GSM8K records with no extractable numeric answer BEFORE sampling (FR-13)
             if source == "gsm8k":
@@ -992,7 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Ingest all configured benchmark domains (code_generation, research_qa, quant_analysis).",
+        help="Ingest all configured benchmark domains (code_generation, research_qa, quant_analysis, support_triage, content_generation).",
     )
     parser.add_argument(
         "--domain",

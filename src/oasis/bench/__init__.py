@@ -15,6 +15,7 @@ from oasis.bench.models import (
 )
 
 if TYPE_CHECKING:
+    from oasis.bench.authored import load_authored_tasks
     from oasis.bench.ingest import (
         assert_no_leakage,
         assign_splits,
@@ -28,6 +29,10 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str) -> Any:
+    if name == "load_authored_tasks":
+        import oasis.bench.authored as authored_mod
+
+        return getattr(authored_mod, name)
     if name in {
         "assert_no_leakage",
         "assign_splits",
@@ -59,6 +64,7 @@ __all__ = [
     "get_calibration_tasks",
     "get_eval_tasks",
     "ingest_benchmarks",
+    "load_authored_tasks",
     "load_benchmark_config",
     "read_task_records",
     "save_task_records",
