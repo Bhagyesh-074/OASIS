@@ -22,6 +22,7 @@ from typing import Any
 from oasis.bench.config import BenchmarkConfig, load_benchmark_config
 from oasis.bench.models import (
     CONTEXT_MARKER,
+    CitationResolveSpec,
     TaskDomain,
     TaskRecord,
 )
@@ -78,6 +79,105 @@ def extract_gsm8k_numeric(answer: str) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def extract_hotpotqa_context(
+    raw_context: Any,
+) -> tuple[list[str], list[str]]:
+    """Extract context titles and formatted paragraphs in dataset order (FR-13, FR-3).
+
+    Handles both HuggingFace dict format ({"title": [...], "sentences": [[...], ...]})
+    and raw JSON list format ([[title, sentences], ...]).
+
+    Parameters
+    ----------
+    raw_context:
+        Raw context structure from HotpotQA distractor record.
+
+    Returns
+    -------
+    tuple[list[str], list[str]]
+        (context_titles, formatted_paragraphs)
+        where each formatted paragraph is '[Title] text' in dataset's own order.
+    """
+    context_titles: list[str] = []
+    paragraphs: list[str] = []
+
+    if isinstance(raw_context, dict):
+        titles = raw_context.get("title", [])
+        sentences_list = raw_context.get("sentences", [])
+        for idx, title_item in enumerate(titles):
+            title = str(title_item).strip()
+            sentences = sentences_list[idx] if idx < len(sentences_list) else []
+            if isinstance(sentences, (list, tuple)):
+                text = " ".join(str(s).strip() for s in sentences if str(s).strip())
+            else:
+                text = str(sentences).strip()
+            context_titles.append(title)
+            para = f"[{title}] {text}".strip()
+            paragraphs.append(para)
+
+    elif isinstance(raw_context, list):
+        for item in raw_context:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                title = str(item[0]).strip()
+                sentences = item[1]
+                if isinstance(sentences, (list, tuple)):
+                    text = " ".join(str(s).strip() for s in sentences if str(s).strip())
+                else:
+                    text = str(sentences).strip()
+                context_titles.append(title)
+                para = f"[{title}] {text}".strip()
+                paragraphs.append(para)
+            elif isinstance(item, dict):
+                title = str(item.get("title", "")).strip()
+                sentences = item.get("sentences", [])
+                if isinstance(sentences, (list, tuple)):
+                    text = " ".join(str(s).strip() for s in sentences if str(s).strip())
+                else:
+                    text = str(sentences).strip()
+                context_titles.append(title)
+                para = f"[{title}] {text}".strip()
+                paragraphs.append(para)
+
+    return context_titles, paragraphs
+
+
+def extract_hotpotqa_supporting_titles(raw_facts: Any) -> list[str]:
+    """Extract ordered unique supporting paragraph titles (FR-13, FR-3).
+
+    Handles both HuggingFace dict format ({"title": [...], "sent_id": [...]})
+    and raw JSON list format ([[title, sent_id], ...]).
+
+    Parameters
+    ----------
+    raw_facts:
+        Raw supporting_facts structure from HotpotQA record.
+
+    Returns
+    -------
+    list[str]
+        Ordered list of unique supporting paragraph titles.
+    """
+    raw_titles: list[str] = []
+    if isinstance(raw_facts, dict):
+        titles = raw_facts.get("title", [])
+        if isinstance(titles, list):
+            raw_titles = [str(t).strip() for t in titles if str(t).strip()]
+    elif isinstance(raw_facts, list):
+        for item in raw_facts:
+            if isinstance(item, (list, tuple)) and len(item) >= 1:
+                t = str(item[0]).strip()
+                if t:
+                    raw_titles.append(t)
+            elif isinstance(item, dict):
+                t = str(item.get("title", "")).strip()
+                if t:
+                    raw_titles.append(t)
+            elif isinstance(item, str) and item.strip():
+                raw_titles.append(item.strip())
+
+    return list(dict.fromkeys(raw_titles))
 
 
 def transform_raw_to_task(
@@ -183,19 +283,47 @@ def transform_raw_to_task(
             raise KeyError("HotpotQA raw record missing native '_id' or 'id'")
         source_ref = str(native_id)
         task_id = f"hotpotqa_{source_ref}"
-        statement = str(raw.get("question", "")).strip()
+        question = str(raw.get("question", "")).strip()
+        if not question:
+            raise ValueError(f"HotpotQA record '{task_id}' missing 'question'")
+
         answer = str(raw.get("answer", "")).strip()
-        supporting_facts = raw.get("supporting_facts", {})
-        spec = json.dumps(
-            {"expected_answer": answer, "supporting_facts": supporting_facts}
+        context_titles, paragraphs = extract_hotpotqa_context(raw.get("context", {}))
+        supporting_titles = extract_hotpotqa_supporting_titles(
+            raw.get("supporting_facts", {})
         )
+
+        # Validate spec with CitationResolveSpec pydantic model (FR-13, FR-3)
+        # Rejects records with empty expected_answer or no supporting titles
+        try:
+            spec_obj = CitationResolveSpec(
+                expected_answer=answer,
+                context_titles=context_titles,
+                supporting_titles=supporting_titles,
+            )
+        except Exception as exc:
+            raise ValueError(
+                f"Invalid citation_resolve spec for HotpotQA record '{task_id}': {exc}"
+            ) from exc
+
+        # Format statement: instruction + question, then CONTEXT_MARKER, then paragraphs as "[Title] text"
+        instruction = "Answer using only the context below and cite the titles of the paragraphs you used."
+        paragraphs_block = "\n\n".join(paragraphs)
+        if paragraphs_block:
+            statement = (
+                f"{instruction}\n\n{question}\n\n{CONTEXT_MARKER}\n\n{paragraphs_block}"
+            )
+        else:
+            statement = f"{instruction}\n\n{question}\n\n{CONTEXT_MARKER}"
+
+        spec = spec_obj.model_dump_json()
         return {
             "task_id": task_id,
             "domain": domain,
             "source": "hotpotqa",
             "source_ref": source_ref,
             "statement": statement,
-            "reference_answer": answer,
+            "reference_answer": spec_obj.expected_answer,
             "verifier_type": "citation_resolve",
             "verifier_spec": spec,
             "complexity_label": None,
@@ -687,7 +815,7 @@ def save_task_records(
 
     out = Path(output_path or "data/tasks.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", encoding="utf-8") as f:
+    with out.open("w", encoding="utf-8", newline="\n") as f:
         for r in records:
             f.write(r.model_dump_json() + "\n")
     return out
@@ -796,6 +924,26 @@ def ingest_benchmarks(
                 if dropped > 0:
                     logger.warning(
                         "Filtered out %d GSM8K records with no extractable numeric answer before sampling",
+                        dropped,
+                    )
+                raw_items = valid_items
+
+            # Filter out HotpotQA records with empty answer or no supporting titles BEFORE sampling (FR-13, FR-3)
+            if source == "hotpotqa":
+                valid_items = []
+                dropped = 0
+                for item in raw_items:
+                    ans = str(item.get("answer", "")).strip()
+                    supp_titles = extract_hotpotqa_supporting_titles(
+                        item.get("supporting_facts", {})
+                    )
+                    if ans and supp_titles:
+                        valid_items.append(item)
+                    else:
+                        dropped += 1
+                if dropped > 0:
+                    logger.warning(
+                        "Filtered out %d HotpotQA records with empty answer or no supporting titles before sampling",
                         dropped,
                     )
                 raw_items = valid_items

@@ -1,7 +1,8 @@
-"""Invariant test for hash seed determinism under PYTHONHASHSEED (FR-3, NFR-4).
+"""Invariant test for hash seed determinism under PYTHONHASHSEED (FR-13, FR-3, NFR-4).
 
-Guards that task sampling and split assignment are 100% deterministic
-and strictly independent of Python's randomized hash seed.
+Guards that task sampling and split assignment are 100% deterministic,
+free of carriage returns (byte-identical across OSes), and strictly
+independent of Python's randomized hash seed.
 """
 
 from __future__ import annotations
@@ -61,6 +62,13 @@ def test_hash_seed_determinism_across_pythonhashseeds(tmp_path: Path) -> None:
 
     assert len(bytes1) > 0, "Output file 1 is empty"
     assert len(bytes2) > 0, "Output file 2 is empty"
+
+    assert b"\r" not in bytes1, (
+        r"Carriage return \r detected in task JSONL output for seed 1 (must use LF \n only) (FR-3, NFR-4)"
+    )
+    assert b"\r" not in bytes2, (
+        r"Carriage return \r detected in task JSONL output for seed 2 (must use LF \n only) (FR-3, NFR-4)"
+    )
 
     assert bytes1 == bytes2, (
         f"Byte-identical output invariant violated under differing PYTHONHASHSEED!\n"

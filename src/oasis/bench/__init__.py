@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from oasis.bench.config import BenchmarkConfig, load_benchmark_config
 from oasis.bench.models import (
     CONTEXT_MARKER,
+    CitationResolveSpec,
     TaskComplexityLabel,
     TaskDomain,
     TaskRecord,
@@ -46,6 +47,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "CONTEXT_MARKER",
     "BenchmarkConfig",
+    "CitationResolveSpec",
     "TaskComplexityLabel",
     "TaskDomain",
     "TaskRecord",

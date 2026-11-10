@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 CONTEXT_MARKER = "### CONTEXT"
 
@@ -121,3 +121,48 @@ class TaskRecord(BaseModel):
             return parsed if isinstance(parsed, dict) else {"raw": parsed}
         except (json.JSONDecodeError, TypeError):
             return {}
+
+
+class CitationResolveSpec(BaseModel):
+    """Verifier specification schema for citation_resolve L3 verifiers (FR-13, FR-3).
+
+    Attributes
+    ----------
+    expected_answer:
+        Canonical gold answer string. Must not be empty or whitespace-only.
+    context_titles:
+        Titles of all context paragraphs provided in dataset order.
+    supporting_titles:
+        Titles of gold supporting paragraphs. Must contain at least one non-empty title.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    expected_answer: str = Field(
+        ..., min_length=1, description="Canonical gold answer string (FR-13)"
+    )
+    context_titles: list[str] = Field(
+        default_factory=list,
+        description="Titles of all context paragraphs (FR-13, FR-3)",
+    )
+    supporting_titles: list[str] = Field(
+        ..., min_length=1, description="Titles of supporting paragraphs (FR-13, FR-3)"
+    )
+
+    @field_validator("expected_answer")
+    @classmethod
+    def validate_expected_answer(cls, v: str) -> str:
+        """Validate that expected_answer is not empty or whitespace-only (FR-13, FR-3)."""
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("expected_answer must not be empty or whitespace-only")
+        return stripped
+
+    @field_validator("supporting_titles")
+    @classmethod
+    def validate_supporting_titles(cls, v: list[str]) -> list[str]:
+        """Validate that supporting_titles has at least one non-empty title (FR-13, FR-3)."""
+        cleaned = [t.strip() for t in v if t and t.strip()]
+        if not cleaned:
+            raise ValueError("supporting_titles must not be empty")
+        return cleaned
