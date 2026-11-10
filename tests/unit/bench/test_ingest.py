@@ -13,6 +13,7 @@ from oasis.bench.config import BenchmarkConfig, load_benchmark_config
 from oasis.bench.ingest import (
     assign_splits,
     extract_gsm8k_numeric,
+    extract_humaneval_statement,
     ingest_benchmarks,
     load_raw_from_fixture,
     main,
@@ -109,7 +110,7 @@ def test_mbpp_transformation(fixtures_dir: Path) -> None:
 
 
 def test_humaneval_transformation(fixtures_dir: Path) -> None:
-    """HumanEval raw records map to code_generation domain with pytest verifier."""
+    """HumanEval raw records map to code_generation domain with formatted instruction and pytest verifier."""
     raw_items = load_raw_from_fixture(fixtures_dir / "humaneval_sample.jsonl")
     assert len(raw_items) >= 2
 
@@ -123,6 +124,14 @@ def test_humaneval_transformation(fixtures_dir: Path) -> None:
     spec = json.loads(task_dict["verifier_spec"])
     assert spec["entry_point"] == "has_close_elements"
     assert "def check(candidate):" in spec["test_code"]
+
+    # Check statement structure: plain-text instruction + CONTEXT_MARKER + unchanged prompt stub
+    assert CONTEXT_MARKER in task_dict["statement"]
+    instruction, stub = task_dict["statement"].split(f"\n\n{CONTEXT_MARKER}\n", 1)
+    assert "has_close_elements" in instruction
+    assert "def " not in instruction
+    assert ">>>" not in instruction
+    assert stub == raw_items[0]["prompt"]
 
 
 def test_hotpotqa_transformation(fixtures_dir: Path) -> None:
@@ -642,8 +651,118 @@ def test_cli_all_with_fixtures(tmp_path: Path, fixtures_dir: Path) -> None:
     assert len(records) > 0
 
 
+
 # ---------------------------------------------------------------------------
-# 5. Marker for real download (skipped by default)
+# 5. Real dataset shape parsing & pool validation (offline)
+# ---------------------------------------------------------------------------
+def test_mbpp_real_dataset_shape_transformation(fixtures_dir: Path) -> None:
+    """Parse MBPP records in the real HuggingFace sanitized shape (prompt, test_imports)."""
+    fixture_path = fixtures_dir / "mbpp_real_shape_sample.jsonl"
+    raw_items = load_raw_from_fixture(fixture_path)
+    assert len(raw_items) == 2
+
+    # First record has non-empty test_imports
+    task1 = transform_raw_to_task(raw_items[0], source="mbpp", domain="code_generation")
+    assert task1["task_id"] == "mbpp_0011"
+    assert "Write a python function to remove first and last occurrence" in task1["statement"]
+    assert CONTEXT_MARKER in task1["statement"]
+    spec1 = json.loads(task1["verifier_spec"])
+    assert spec1["test_setup_code"] == "import math"
+    assert "assert remove_Occ" in spec1["test_code"]
+
+    # Second record has empty test_imports
+    task2 = transform_raw_to_task(raw_items[1], source="mbpp", domain="code_generation")
+    assert task2["task_id"] == "mbpp_0012"
+    assert "Write a function to sort a given matrix" in task2["statement"]
+    spec2 = json.loads(task2["verifier_spec"])
+    assert spec2["test_setup_code"] == ""
+    assert "assert sort_matrix" in spec2["test_code"]
+
+
+def test_humaneval_real_dataset_shape_transformation(fixtures_dir: Path) -> None:
+    """Parse HumanEval records in real shape, verifying docstring extraction and no-docstring fallback."""
+    fixture_path = fixtures_dir / "humaneval_real_shape_sample.jsonl"
+    raw_items = load_raw_from_fixture(fixture_path)
+    assert len(raw_items) == 2
+
+    # 1. Record with multi-paragraph docstring and >>> examples
+    task1 = transform_raw_to_task(raw_items[0], source="humaneval", domain="code_generation")
+    assert task1["task_id"] == "humaneval_116"
+    assert CONTEXT_MARKER in task1["statement"]
+    inst1, stub1 = task1["statement"].split(f"\n\n{CONTEXT_MARKER}\n", 1)
+    assert "sort_array" in inst1
+    assert "def " not in inst1
+    assert ">>>" not in inst1
+    assert "In this Kata, you have to sort an array" in inst1
+    # Check stub is unchanged after the marker
+    assert stub1 == raw_items[0]["prompt"]
+
+    # 2. Record with no docstring (bare function signature) gets generic instruction
+    task2 = transform_raw_to_task(raw_items[1], source="humaneval", domain="code_generation")
+    assert task2["task_id"] == "humaneval_999"
+    assert CONTEXT_MARKER in task2["statement"]
+    inst2, stub2 = task2["statement"].split(f"\n\n{CONTEXT_MARKER}\n", 1)
+    assert inst2 == "Complete the Python function `add_numbers` so that it satisfies the specification and examples in its docstring."
+    assert "def " not in inst2
+    assert ">>>" not in inst2
+    assert stub2 == raw_items[1]["prompt"]
+
+
+def test_extract_humaneval_statement_direct() -> None:
+    """Test extract_humaneval_statement edge cases directly."""
+    # Stub with Example header
+    prompt_with_example_header = (
+        "def foo(x):\n"
+        '    """\n'
+        "    First paragraph of specification.\n"
+        "\n"
+        "    Example:\n"
+        "    foo(1) == 2\n"
+        '    """\n'
+        "    pass\n"
+    )
+    stmt = extract_humaneval_statement(prompt_with_example_header, "foo")
+    inst, stub = stmt.split(f"\n\n{CONTEXT_MARKER}\n", 1)
+    assert inst == (
+        "Complete the Python function `foo` so that it satisfies the specification and examples in its docstring. "
+        "First paragraph of specification."
+    )
+    assert stub == prompt_with_example_header
+
+    # Stub with no docstring
+    prompt_bare = "def bar(): pass\n"
+    stmt_bare = extract_humaneval_statement(prompt_bare, "bar")
+    inst_bare, stub_bare = stmt_bare.split(f"\n\n{CONTEXT_MARKER}\n", 1)
+    assert inst_bare == (
+        "Complete the Python function `bar` so that it satisfies the specification and examples in its docstring."
+    )
+    assert stub_bare == prompt_bare
+
+
+def test_insufficient_pool_raises_value_error() -> None:
+    """sample_raw_data with fail_if_insufficient=True raises ValueError on undersized pool."""
+    pool = [{"task_id": 1, "prompt": "p1"}, {"task_id": 2, "prompt": "p2"}]
+    with pytest.raises(ValueError, match="pool is too small|contains 2 items"):
+        sample_raw_data(pool, count=5, seed=42, fail_if_insufficient=True)
+
+    # With fail_if_insufficient=False (default/fixtures mode), returns available pool without raising
+    sampled = sample_raw_data(pool, count=5, seed=42, fail_if_insufficient=False)
+    assert len(sampled) == 2
+
+
+def test_config_dataset_revisions_pinned() -> None:
+    """Every dataset in config/benchmark.yaml must pin an explicit 40-character commit SHA revision."""
+    cfg = load_benchmark_config()
+    for ds_key in ["mbpp", "humaneval", "hotpotqa", "gsm8k"]:
+        assert ds_key in cfg.datasets, f"Missing dataset {ds_key} in benchmark.yaml"
+        ds_info = cfg.datasets[ds_key]
+        assert "revision" in ds_info, f"Dataset {ds_key} must pin revision SHA"
+        rev = ds_info["revision"]
+        assert isinstance(rev, str) and len(rev) == 40, f"Dataset {ds_key} revision must be 40-char SHA: {rev}"
+
+
+# ---------------------------------------------------------------------------
+# 6. Marker for real download (skipped by default)
 # ---------------------------------------------------------------------------
 @pytest.mark.real_download
 def test_real_download_from_huggingface() -> None:
