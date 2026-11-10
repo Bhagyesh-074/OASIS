@@ -45,6 +45,8 @@ class BenchmarkConfig(BaseModel):
             "code_generation": 20,
             "research_qa": 20,
             "quant_analysis": 20,
+            "support_triage": 20,
+            "content_generation": 20,
         },
         description="Task counts per domain",
     )
@@ -53,6 +55,8 @@ class BenchmarkConfig(BaseModel):
             "code_generation": {"mbpp": 10, "humaneval": 10},
             "research_qa": {"hotpotqa": 20},
             "quant_analysis": {"gsm8k": 20},
+            "support_triage": {"authored": 20},
+            "content_generation": {"authored": 20},
         },
         description="Task counts per source within domain",
     )
