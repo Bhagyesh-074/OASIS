@@ -1,0 +1,45 @@
+# OASIS Benchmark Configuration (FR-3, NFR-4)
+# Configures dataset ingestion, per-domain sample counts, seeded determinism, and calibration/eval splits.
+
+seed: 42
+
+# Fraction of tasks partitioned into the held-out calibration split (FR-3)
+# The remaining tasks are assigned to the evaluation split ('eval')
+calibration_fraction: 0.25
+
+# Target task counts per domain (default 20)
+domain_counts:
+  code_generation: 20
+  research_qa: 20
+  quant_analysis: 20
+
+# Allocation of tasks across benchmark data sources within each domain
+source_allocation:
+  code_generation:
+    mbpp: 10
+    humaneval: 10
+  research_qa:
+    hotpotqa: 20
+  quant_analysis:
+    gsm8k: 20
+
+# HuggingFace datasets specifications for live ingestion
+datasets:
+  mbpp:
+    path: "google-research-datasets/mbpp"
+    name: "sanitized"
+    split: "test"
+  humaneval:
+    path: "openai_humaneval"
+    split: "test"
+  hotpotqa:
+    path: "hotpot_qa"
+    name: "distractor"
+    split: "validation"
+  gsm8k:
+    path: "gsm8k"
+    name: "main"
+    split: "test"
+
+# Output destination for ingested task records
+output_path: "data/tasks.jsonl"
