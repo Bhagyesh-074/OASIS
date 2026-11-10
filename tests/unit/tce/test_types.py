@@ -10,18 +10,20 @@ from oasis.tce.types import Estimate, SubScores, WeightedContribution
 
 def test_subscores_creation_and_bounds() -> None:
     """FR-2: SubScores validates bounds (subtask_count >= 0, dep_density in [0, 1])."""
-    subscores = SubScores(subtask_count=4.0, skill_clusters=3.0, dep_density=0.42)
-    assert subscores.subtask_count == 4.0
-    assert subscores.skill_clusters == 3.0
+    subscores = SubScores(subtask_count=4, skill_clusters=3, dep_density=0.42)
+    assert isinstance(subscores.subtask_count, int)
+    assert isinstance(subscores.skill_clusters, int)
+    assert subscores.subtask_count == 4
+    assert subscores.skill_clusters == 3
     assert subscores.dep_density == 0.42
 
     # dep_density > 1 rejected
     with pytest.raises(ValidationError):
-        SubScores(subtask_count=4.0, skill_clusters=3.0, dep_density=1.5)
+        SubScores(subtask_count=4, skill_clusters=3, dep_density=1.5)
 
     # subtask_count < 0 rejected
     with pytest.raises(ValidationError):
-        SubScores(subtask_count=-1.0, skill_clusters=3.0, dep_density=0.5)
+        SubScores(subtask_count=-1, skill_clusters=3, dep_density=0.5)
 
 
 def test_weighted_contribution_creation() -> None:
@@ -38,7 +40,7 @@ def test_weighted_contribution_creation() -> None:
 
 def test_estimate_schema_matches_api_spec() -> None:
     """FR-1, FR-2: Estimate matches POST /v1/estimate schema from API_SPEC.md."""
-    subscores = SubScores(subtask_count=4.0, skill_clusters=3.0, dep_density=0.42)
+    subscores = SubScores(subtask_count=4, skill_clusters=3, dep_density=0.42)
     weights = {"subtask_count": 0.4, "skill_clusters": 0.4, "dep_density": 0.2}
     contributions = WeightedContribution(
         subtask_count=0.16,
@@ -59,8 +61,10 @@ def test_estimate_schema_matches_api_spec() -> None:
 
     data = estimate.model_dump()
     assert data["mvts"] == 3
-    assert data["subscores"]["subtask_count"] == 4.0
-    assert data["subscores"]["skill_clusters"] == 3.0
+    assert data["subscores"]["subtask_count"] == 4
+    assert isinstance(data["subscores"]["subtask_count"], int)
+    assert data["subscores"]["skill_clusters"] == 3
+    assert isinstance(data["subscores"]["skill_clusters"], int)
     assert data["subscores"]["dep_density"] == 0.42
     assert data["weights"] == weights
     assert data["contributions"]["subtask_count"] == 0.16
@@ -71,7 +75,7 @@ def test_estimate_schema_matches_api_spec() -> None:
 
 def test_estimate_mvts_bounds() -> None:
     """FR-1: Estimate enforces mvts in range [1, 8]."""
-    subscores = SubScores(subtask_count=1.0, skill_clusters=1.0, dep_density=0.1)
+    subscores = SubScores(subtask_count=1, skill_clusters=1, dep_density=0.1)
     weights = {"subtask_count": 0.4, "skill_clusters": 0.4, "dep_density": 0.2}
     contributions = WeightedContribution(
         subtask_count=0.4,
@@ -106,7 +110,7 @@ def test_estimate_mvts_bounds() -> None:
 
 def test_estimate_empty_justification_rejected() -> None:
     """FR-24: Estimate requires non-empty justification string."""
-    subscores = SubScores(subtask_count=1.0, skill_clusters=1.0, dep_density=0.1)
+    subscores = SubScores(subtask_count=1, skill_clusters=1, dep_density=0.1)
     weights = {"subtask_count": 0.4, "skill_clusters": 0.4, "dep_density": 0.2}
     contributions = WeightedContribution(
         subtask_count=0.4,
