@@ -1,0 +1,27 @@
+\begin{table*}[t]
+\centering
+\small
+\caption{Comparison of OASIS against twelve multi-agent LLM systems (2023--2025). OASIS is the only system offering a decoupled supervisory layer with 4D real-time budget enforcement, tiered multi-layer monitoring, and offline replay purity.}
+\label{tab:related_work}
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{System} & \textbf{Year / Venue} & \textbf{Decoupled} & \textbf{Pre-Exec} & \textbf{4D Budget} & \textbf{Tiered L1--L3} & \textbf{In-Flight} & \textbf{Replay} & \textbf{Provenance} \\
+ & & \textbf{Supervisor} & \textbf{Sizing} & \textbf{Enforcement} & \textbf{Quality} & \textbf{Swap} & \textbf{Purity} & \textbf{Audit (XAI)} \\
+\midrule
+LangGraph & 2024 & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes \\
+AutoGen / AG2 & 2024 & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes \\
+CrewAI & 2024 & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes \\
+MetaGPT & 2024 & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes \\
+ChatDev & 2024 & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes \\
+AgentVerse & 2024 & \texttimes & \textasciitilde & \texttimes & \textasciitilde & \textasciitilde & \texttimes & \texttimes \\
+CaptainAgent & 2024 & \texttimes & \textasciitilde & \texttimes & \texttimes & \textasciitilde & \texttimes & \texttimes \\
+DyLAN & 2023 & \texttimes & \texttimes & \texttimes & \textasciitilde & \textasciitilde & \texttimes & \texttimes \\
+MacNet & 2024 & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes \\
+CAMEL & 2023 & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes & \texttimes \\
+AutoDefense & 2024 & \textasciitilde & \texttimes & \texttimes & \textasciitilde & \texttimes & \texttimes & \textasciitilde \\
+GPTSwarm & 2024 & \texttimes & \textasciitilde & \texttimes & \textasciitilde & \textasciitilde & \texttimes & \texttimes \\
+\midrule
+\textbf{OASIS (Ours)} & \textbf{2026} & \textbf{\checkmark} & \textbf{\checkmark (TCE)} & \textbf{\checkmark (4D)} & \textbf{\checkmark (RTPM)} & \textbf{\checkmark (ATL)} & \textbf{\checkmark (Zero Net)} & \textbf{\checkmark (FR-24)} \\
+\bottomrule
+\end{tabular}
+\end{table*}

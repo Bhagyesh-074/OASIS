@@ -90,6 +90,8 @@ GET /v1/runs/{run_id}
   "status_detail": null,               // "halted_budget" | "adapter_error" | …
   "arm": "full", "seed": 1, "framework": "langgraph",
   "config": { …TeamConfig… },
+  "budget": { "max_tokens": 200000, "max_cost_usd": 0.75,
+              "max_wall_seconds": 300, "max_calls": 60 },
   "totals": { "tokens": 141230, "cost_usd": 0.58, "wall_seconds": 187, "calls": 39,
               "supervision_tokens": 16880, "supervision_share": 0.12 },
   "compliance": { "tokens": true, "cost": true, "wall": true, "calls": true, "all": true },

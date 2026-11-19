@@ -1,1 +1,1 @@
-"""Unit tests for oracle sweep evaluation module."""
+"""Unit tests for evaluation harness, statistics, and oracle sweep evaluation modules."""

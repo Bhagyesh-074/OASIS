@@ -122,15 +122,16 @@ class TeamReducer:
             or role.get("tokens")
             or self._estimates.get(role_name, 1_000)
         )
-        cost_usd = float(
-            role.get("est_cost_usd")
-            if role.get("est_cost_usd") is not None
-            else role.get("cost_usd", tokens * 0.00001)
-        )
+        raw_cost = role.get("est_cost_usd")
+        if raw_cost is None:
+            raw_cost = role.get("cost_usd")
+        cost_usd = float(raw_cost if raw_cost is not None else tokens * 0.00001)
+
+        raw_wall = role.get("est_wall_seconds")
+        if raw_wall is None:
+            raw_wall = role.get("wall_seconds")
         wall_seconds = float(
-            role.get("est_wall_seconds")
-            if role.get("est_wall_seconds") is not None
-            else role.get("wall_seconds", max(1.0, tokens / 100.0))
+            raw_wall if raw_wall is not None else max(1.0, tokens / 100.0)
         )
         calls = int(
             role.get("est_calls")
@@ -348,7 +349,7 @@ class TeamReducer:
                     "merged_roles": [name_a, name_b],
                     "projected_before": projected,
                 },
-                justification=log_entry["justification"],
+                justification=str(log_entry["justification"]),
             )
 
             # Replace idx_a with merged_role and remove idx_b
