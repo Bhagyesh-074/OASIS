@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Activity, DollarSign, Square } from 'lucide-react';
+import { ArrowUpRight, DollarSign, LoaderCircle, Shield, Square } from 'lucide-react';
 import { RunDetail, SpendStatus } from '../types';
 
 interface HeaderProps {
@@ -12,6 +12,15 @@ interface HeaderProps {
   isLoading: boolean;
 }
 
+const statusStyles: Record<RunDetail['status'], string> = {
+  queued: 'border-blue-400/20 bg-blue-400/10 text-blue-200',
+  running: 'border-amber-400/20 bg-amber-400/10 text-amber-200',
+  completed: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
+  halted_budget: 'border-rose-400/20 bg-rose-400/10 text-rose-200',
+  failed: 'border-rose-400/20 bg-rose-400/10 text-rose-200',
+  cancelled: 'border-slate-400/20 bg-slate-400/10 text-slate-200',
+};
+
 export const Header: React.FC<HeaderProps> = ({
   run,
   spend,
@@ -21,114 +30,113 @@ export const Header: React.FC<HeaderProps> = ({
   onCancelRun,
   isLoading,
 }) => {
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'running':
-        return 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse';
-      case 'completed':
-        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
-      case 'halted_budget':
-        return 'bg-rose-500/20 text-rose-300 border-rose-500/40';
-      case 'failed':
-      case 'cancelled':
-        return 'bg-red-500/20 text-red-300 border-red-500/40';
-      case 'queued':
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/40';
-      default:
-        return 'bg-slate-700/50 text-slate-300 border-slate-600';
-    }
-  };
-
   const spendPercent = spend
-    ? Math.min(100, (spend.cumulative_spend_usd / spend.ceiling_usd) * 100)
+    ? Math.min(
+        100,
+        spend.ceiling_usd > 0 ? (spend.cumulative_spend_usd / spend.ceiling_usd) * 100 : 0,
+      )
     : 0;
 
   return (
-    <header className="border-b border-slate-800 bg-[#0F172A]/90 backdrop-blur sticky top-0 z-50 px-6 py-4">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Brand & System Status */}
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
-            <Shield className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xl tracking-tight text-white">OASIS</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-sky-950 text-sky-400 border border-sky-800 font-mono">
-                Supervisor v1.0
-              </span>
+    <header className="sticky top-0 z-50 border-b border-white/[0.07] bg-[#090e18]/90 px-4 py-3 backdrop-blur-xl sm:px-6">
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-sky-300/15 bg-gradient-to-br from-sky-400/20 to-indigo-500/10 shadow-[0_0_30px_-12px_rgba(56,189,248,0.65)]">
+              <Shield className="h-5 w-5 text-sky-200" />
             </div>
-            <p className="text-xs text-slate-400">Dynamic Supervisory Layer for Multi-Agent LLMs</p>
-          </div>
-        </div>
-
-        {/* Global Spend Ceiling Guardrail (NFR-3) */}
-        {spend && (
-          <div className="flex items-center gap-4 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
-            <DollarSign className="w-5 h-5 text-emerald-400" />
-            <div className="flex flex-col">
-              <div className="flex justify-between text-xs gap-4 font-mono">
-                <span className="text-slate-400">Global Spend:</span>
-                <span className="font-semibold text-slate-200">
-                  ${spend.cumulative_spend_usd.toFixed(2)} / ${spend.ceiling_usd.toFixed(2)}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold tracking-[0.18em] text-white">OASIS</span>
+                <span className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                  Control room
                 </span>
               </div>
-              <div className="w-40 h-1.5 bg-slate-800 rounded-full mt-1.5 overflow-hidden">
+              <p className="hidden truncate text-[11px] text-slate-500 sm:block">
+                Multi-agent execution observability
+              </p>
+            </div>
+          </div>
+          {run && (
+            <span
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${statusStyles[run.status]}`}
+            >
+              {run.status.replace('_', ' ')}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
+          {spend && (
+            <div className="min-w-[220px] rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <DollarSign className="h-3.5 w-3.5 text-emerald-300" />
+                  Global spend
+                </span>
+                <span className="font-mono text-xs font-medium text-slate-200">
+                  ${spend.cumulative_spend_usd.toFixed(2)}{' '}
+                  <span className="text-slate-600">/</span> ${spend.ceiling_usd.toFixed(2)}
+                </span>
+              </div>
+              <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-slate-800">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    spendPercent > 90 ? 'bg-rose-500' : spendPercent > 70 ? 'bg-amber-400' : 'bg-emerald-400'
+                    spendPercent > 90
+                      ? 'bg-rose-400'
+                      : spendPercent > 70
+                        ? 'bg-amber-300'
+                        : 'bg-emerald-300'
                   }`}
                   style={{ width: `${spendPercent}%` }}
                 />
               </div>
+              <div className="mt-1 flex justify-between text-[9px] text-slate-600">
+                <span>{spendPercent.toFixed(1)}% of soft ceiling</span>
+                <span>Hard stop ${spend.kill_ceiling_usd.toFixed(2)}</span>
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* Run Selector & Controller */}
-        <div className="flex items-center gap-2">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (runIdInput.trim()) onLoadRun(runIdInput.trim());
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
-              placeholder="Run ID (e.g. 01J...)"
-              value={runIdInput}
-              onChange={(e) => setRunIdInput(e.target.value)}
-              className="px-3 py-1.5 bg-slate-900 text-sm font-mono border border-slate-700 rounded-lg focus:outline-none focus:border-sky-500 text-slate-200 w-44 md:w-56"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !runIdInput.trim()}
-              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
-            >
-              <Activity className="w-4 h-4" />
-              <span>Load</span>
-            </button>
-          </form>
-
-          {run && run.status === 'running' && (
-            <button
-              onClick={onCancelRun}
-              className="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 border border-rose-500"
-            >
-              <Square className="w-3.5 h-3.5 fill-current" />
-              <span>Cancel</span>
-            </button>
           )}
 
           {run && (
-            <span
-              className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold uppercase tracking-wider border ${getStatusColor(
-                run.status
-              )}`}
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (runIdInput.trim()) onLoadRun(runIdInput.trim());
+              }}
+              className="flex min-w-0 items-center gap-2"
             >
-              {run.status.replace('_', ' ')}
-            </span>
+              <input
+                type="text"
+                aria-label="Run ID"
+                placeholder="Paste a run ID…"
+                value={runIdInput}
+                onChange={(event) => setRunIdInput(event.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-white/[0.09] bg-slate-950/70 px-3 py-2 text-xs font-mono text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/10 sm:w-48 sm:flex-none"
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !runIdInput.trim()}
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:border-sky-300/40 hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isLoading ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                )}
+                <span>{isLoading ? 'Loading' : 'Open run'}</span>
+              </button>
+            </form>
+          )}
+
+          {run?.status === 'running' && (
+            <button
+              onClick={onCancelRun}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-400/20"
+            >
+              <Square className="h-3.5 w-3.5 fill-current" />
+              Stop run
+            </button>
           )}
         </div>
       </div>

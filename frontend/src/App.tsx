@@ -6,6 +6,7 @@ import { LayeredScores } from './components/LayeredScores';
 import { ReplacementTimeline } from './components/ReplacementTimeline';
 import { ExplainabilityLog } from './components/ExplainabilityLog';
 import { BenchmarkView } from './components/BenchmarkView';
+import { RunOverview } from './components/RunOverview';
 import {
   BenchmarkSummary,
   DecisionRecord,
@@ -23,7 +24,7 @@ import {
   fetchSpend,
   subscribeToRunEvents,
 } from './api';
-import { Activity, BarChart2 } from 'lucide-react';
+import { Activity, BarChart2, Radio, Sparkles } from 'lucide-react';
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -47,16 +48,18 @@ export const App: React.FC = () => {
   const [scores, setScores] = useState<ScoreRecord[]>([]);
   const loadSequence = useRef(0);
 
-  const loadRunData = useCallback(async (runId: string) => {
+  const loadRunData = useCallback(async (runId: string, preserveLiveEvents = false) => {
     if (!runId) return;
     const sequence = ++loadSequence.current;
     setIsLoading(true);
     setRunError(null);
     setSpendError(null);
-    setRun(null);
+    if (!preserveLiveEvents) setRun(null);
     setDecisions([]);
-    setReplacements([]);
-    setScores([]);
+    if (!preserveLiveEvents) {
+      setReplacements([]);
+      setScores([]);
+    }
     const [runResult, decisionsResult, spendResult] = await Promise.allSettled([
       fetchRun(runId),
       fetchDecisions(runId),
@@ -94,7 +97,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (currentRunId) {
-      void loadRunData(currentRunId);
+      void loadRunData(currentRunId, true);
     } else {
       fetchSpend()
         .then(setSpend)
@@ -207,7 +210,8 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-slate-100 flex flex-col font-sans">
+    <div className="relative min-h-screen overflow-hidden bg-[#080c14] font-sans text-slate-100">
+      <div className="pointer-events-none fixed inset-0 -z-0 bg-[radial-gradient(ellipse_at_50%_-20%,rgba(14,165,233,0.12),transparent_50%),radial-gradient(ellipse_at_100%_50%,rgba(99,102,241,0.06),transparent_40%)]" />
       <Header
         run={run}
         spend={spend}
@@ -218,53 +222,76 @@ export const App: React.FC = () => {
         isLoading={isLoading}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 flex flex-col gap-6">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-3">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <section className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div>
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-300/70">
+              <Sparkles className="h-3.5 w-3.5" />
+              Observability workspace
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              Run intelligence, at a glance.
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Follow resource consumption, team configuration, and decision provenance across your agent runs.
+            </p>
+          </div>
+          <div
+            className={`flex w-fit items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-medium ${
+              isLiveConnected
+                ? 'border-emerald-300/15 bg-emerald-300/[0.06] text-emerald-200'
+                : 'border-white/[0.07] bg-white/[0.025] text-slate-400'
+            }`}
+            aria-live="polite"
+          >
+            <Radio className={`h-3.5 w-3.5 ${isLiveConnected ? 'text-emerald-300' : 'text-slate-500'}`} />
+            {isLiveConnected ? 'Live event stream connected' : 'Waiting for a run stream'}
+          </div>
+        </section>
+
+        <div className="flex flex-col justify-between gap-3 border-b border-white/[0.07] pb-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.025] p-1">
             <button
               onClick={() => setActiveTab('run')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 ${
+              className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
                 activeTab === 'run'
-                  ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'border border-sky-300/10 bg-sky-300/[0.08] text-sky-100 shadow-sm'
+                  : 'border border-transparent text-slate-500 hover:text-slate-200'
               }`}
             >
-              <Activity className="w-4 h-4" />
-              <span>Active Run Monitor</span>
+              <Activity className="h-3.5 w-3.5" />
+              <span>Run monitor</span>
             </button>
             <button
               onClick={() => setActiveTab('benchmark')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 ${
+              className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
                 activeTab === 'benchmark'
-                  ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'border border-sky-300/10 bg-sky-300/[0.08] text-sky-100 shadow-sm'
+                  : 'border border-transparent text-slate-500 hover:text-slate-200'
               }`}
             >
-              <BarChart2 className="w-4 h-4" />
-              <span>Ablation Matrix &amp; Statistics</span>
+              <BarChart2 className="h-3.5 w-3.5" />
+              <span>Benchmark analysis</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-            <span className={`h-2 w-2 rounded-full ${isLiveConnected ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
-            <span>{isLiveConnected ? 'Run event stream: Connected' : 'Run event stream: Disconnected'}</span>
-          </div>
         </div>
 
         {activeTab === 'run' ? (
           <>
             {runError && (
-              <div role="alert" className="rounded-lg border border-rose-800 bg-rose-950/30 p-4 text-sm text-rose-300">
+              <div role="alert" className="rounded-xl border border-rose-400/15 bg-rose-400/[0.06] p-4 text-sm text-rose-200">
                 {runError}
               </div>
             )}
             {spendError && (
-              <div role="alert" className="rounded-lg border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-300">
+              <div role="alert" className="rounded-xl border border-amber-400/15 bg-amber-400/[0.05] p-4 text-sm text-amber-200">
                 Global spend unavailable: {spendError}
               </div>
             )}
             {run ? (
               <>
+                <RunOverview run={run} />
                 <BudgetGauges run={run} />
                 <TeamComposition run={run} />
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -277,8 +304,61 @@ export const App: React.FC = () => {
                 <ExplainabilityLog decisions={decisions} />
               </>
             ) : (
-              <div className="rounded-xl border border-slate-800 bg-[#131B2E] p-8 text-center text-sm text-slate-400">
-                {isLoading ? 'Loading run…' : 'Enter a run ID above to load its live status and audit data.'}
+              <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-gradient-to-br from-[#111b2c] via-[#0f1725] to-[#0d121d] p-6 sm:p-8">
+                <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-indigo-400/[0.07] blur-3xl" />
+                <div className="relative grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-sky-300/10 bg-sky-300/[0.06] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-sky-200/80">
+                      <Activity className="h-3.5 w-3.5" />
+                      Run workspace
+                    </div>
+                    <h2 className="mt-4 max-w-xl text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                      Your agents are doing the work. See how.
+                    </h2>
+                    <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
+                      Load an execution by its run ID to inspect its task, team setup, four budget dimensions,
+                      quality scores, and the decisions made along the way.
+                    </p>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        if (runIdInput.trim()) handleLoadRun(runIdInput.trim());
+                      }}
+                      className="mt-5 flex max-w-lg flex-col gap-2 sm:flex-row"
+                    >
+                      <input
+                        aria-label="Run ID to inspect"
+                        value={runIdInput}
+                        onChange={(event) => setRunIdInput(event.target.value)}
+                        placeholder="Paste a run ID to get started"
+                        className="min-w-0 flex-1 rounded-lg border border-white/[0.09] bg-slate-950/70 px-3.5 py-3 text-xs font-mono text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/10"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isLoading || !runIdInput.trim()}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isLoading ? <Radio className="h-4 w-4 animate-pulse" /> : <Activity className="h-4 w-4" />}
+                        {isLoading ? 'Loading run' : 'Inspect run'}
+                      </button>
+                    </form>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                    {[
+                      ['01', 'Execution context', 'Task, arm, framework, and selected team'],
+                      ['02', 'Resource guardrails', 'Tokens, cost, wall time, and call limits'],
+                      ['03', 'Decision audit', 'Scores, replacements, and justifications'],
+                    ].map(([step, title, detail]) => (
+                      <div key={step} className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-slate-950/25 p-3.5">
+                        <span className="font-mono text-xs text-sky-300/70">{step}</span>
+                        <div>
+                          <div className="text-xs font-semibold text-slate-200">{title}</div>
+                          <div className="mt-1 text-[11px] leading-5 text-slate-500">{detail}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </>
@@ -291,8 +371,9 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="border-t border-slate-900 bg-[#0B0F19] px-6 py-4 text-center text-xs text-slate-500 font-mono">
-        OASIS Dynamic Supervisory Layer • Four-Dimension Budget Monitoring • Replay-Aware Evaluation
+      <footer className="relative z-10 mt-8 border-t border-white/[0.06] px-4 py-4 text-center text-[10px] uppercase tracking-[0.14em] text-slate-600 sm:px-6">
+        OASIS <span className="mx-2 text-slate-800">/</span> Execution observability
+        <span className="mx-2 text-slate-800">/</span> Four-dimension budget monitoring
       </footer>
     </div>
   );

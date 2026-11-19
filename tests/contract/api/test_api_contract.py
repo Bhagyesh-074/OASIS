@@ -167,6 +167,8 @@ class TestRunLifecycleContract:
         detail = detail_resp.json()
         assert detail["run_id"] == run_id
         assert detail["status"] == "failed"
+        assert detail["task_id"]
+        assert detail["task_statement"] == payload["statement"]
         assert "not implemented" in detail["status_detail"]
         assert "compliance" in detail
         assert "totals" in detail

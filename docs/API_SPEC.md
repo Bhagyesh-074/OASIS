@@ -86,7 +86,8 @@ Valid arm values are the eight ablation configurations: vanilla_fixed, single_ag
 GET /v1/runs/{run_id}
 
 ```
-{ "run_id": "01J…", "status": "completed",
+{ "run_id": "01J…", "task_id": "mbpp_0421",
+  "task_statement": "Write a sorting function", "status": "completed",
   "status_detail": null,               // "halted_budget" | "adapter_error" | …
   "arm": "full", "seed": 1, "framework": "langgraph",
   "config": { …TeamConfig… },

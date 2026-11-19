@@ -187,6 +187,7 @@ def get_run(run_id: str) -> RunDetailResponse:
 
     # Retrieve associated records
     tc = db.get_team_config(run_id)
+    task = db.get_task(run.task_id)
     replacements = db.get_replacement_events(run_id)
     executed_swaps = sum(1 for r in replacements if r.outcome == "executed")
     denied_swaps = sum(1 for r in replacements if r.outcome.startswith("denied"))
@@ -241,6 +242,8 @@ def get_run(run_id: str) -> RunDetailResponse:
 
     return RunDetailResponse(
         run_id=run.run_id,
+        task_id=run.task_id,
+        task_statement=task.statement if task else None,
         status=status_literal,  # type: ignore[arg-type]
         status_detail=run.status_detail,
         arm=run.arm,

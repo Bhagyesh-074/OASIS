@@ -49,7 +49,7 @@ uvicorn oasis.api:app --reload  # :8000
 cd frontend && npm ci && npm run dev   # :5173
 ```
 
-Smoke check before any real spend: `python -m oasis.bench smoke --tasks 5 --arm full --mode live --max-cost 1.00`.
+Before a larger live experiment, run one evaluation task through an implemented baseline: `python -m oasis.eval reproduce --job-id smoke-001 --mode live --arms single_agent --seeds 1 --max-tasks 1 --output-dir /tmp/oasis-smoke-results`. Choose a fresh job ID each time. This uses the configured per-run moderate budget; it is not a substitute for setting the global spend ceiling.
 
 Docker
 docker compose up brings up two services — api (FastAPI plus all components, models baked into the image so first start is fast) and dashboard (nginx serving the built React bundle). The dashboard build receives the configured OASIS_API_KEY as VITE_OASIS_API_KEY so its authenticated API requests use the same local key. Volumes mount ./data for SQLite and ./artifacts for the JSONL cache and results. There is no Redis service and no database service; both were removed with the single-process decision. The image builds in two stages, with the model download in the builder layer so it is cached.
@@ -66,7 +66,9 @@ The artifact is the deliverable that makes the paper credible, and it is built t
 
 It contains the source at a tagged commit, requirements.lock, the Dockerfile, all config YAMLs, the benchmark task definitions with the authored domains included in full and the anchored domains referenced by dataset ID, the gzipped JSONL replay cache with keys scrubbed, the SQLite database snapshot, the results tables and figure-generating scripts, the human-labelling data for judge validation, and a manifest listing model pins, seeds, library versions, config hashes and commit.
 
-Reproduction is one command: `docker compose run api python -m oasis.bench reproduce --job ablation-v3 --mode replay`, which reruns the full pipeline from cache and regenerates every table and figure in the paper with zero network calls. The replay-purity CI test (FR-30) guards this claim continuously rather than at submission time.
+The current reproduction command is `docker compose run api python -m oasis.eval reproduce --job-id ablation-v3 --mode replay`. It requires ingested evaluation-split tasks, a replay cache containing the requested calls, a clean git worktree, and a job ID that has not already been used. It writes an aggregate summary and a manifest with the git commit, configured and observed model identifiers, dependency versions, seeds, configuration hashes, and the dependency-lock hash. It does not create placeholder tasks or delete previous job results.
+
+The runner currently executes `vanilla_fixed`, `single_agent`, `tce_only`, `rbe_only`, and `tce_rbe`. The CaptainAgent, monitor-only, full, and oracle arms remain unavailable in the runner, so the current command is not yet a full eight-arm reproduction and cannot regenerate the paper's final results. The replay-purity CI test (FR-30) verifies cache-only execution; credible quality results still require completed scoring and real benchmark runs.
 
 Live reproduction is documented separately with an explicit warning that model drift means numbers will differ, and with the expected spend stated. Being clear that live and replay reproduction are different things — and that only replay is exact — is more honest than the usual claim that an LLM experiment is reproducible.
 

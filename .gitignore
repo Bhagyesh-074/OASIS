@@ -13,8 +13,9 @@ wheels/
 .env
 data/*.db
 data/*.db-*
-artifacts/llm_calls/*.jsonl*
+artifacts/llm_calls/
 artifacts/db_snapshots/*.db
+artifacts/results/
 
 # Frontend
 frontend/node_modules/

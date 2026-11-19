@@ -95,8 +95,11 @@ export const ExplainabilityLog: React.FC<ExplainabilityLogProps> = ({ decisions 
                 key={item.decision_id}
                 className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-lg p-3.5 transition-colors"
               >
-                <div
-                  className="flex items-start justify-between gap-3 cursor-pointer select-none"
+                <button
+                  type="button"
+                  aria-expanded={isExpanded}
+                  aria-controls={`decision-details-${item.decision_id}`}
+                  className="flex w-full items-start justify-between gap-3 text-left"
                   onClick={() => setExpandedId(isExpanded ? null : item.decision_id)}
                 >
                   <div className="flex items-start gap-2.5">
@@ -123,14 +126,20 @@ export const ExplainabilityLog: React.FC<ExplainabilityLogProps> = ({ decisions 
                       ? new Date(item.ts || item.timestamp || '').toLocaleTimeString()
                       : ''}
                   </span>
-                </div>
+                </button>
 
-                {isExpanded && item.inputs && Object.keys(item.inputs).length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-slate-800 font-mono text-[11px] bg-slate-950/60 p-2.5 rounded">
-                    <div className="text-slate-400 font-semibold mb-1">Decision Inputs:</div>
-                    <pre className="text-slate-300 overflow-x-auto">
-                      {JSON.stringify(item.inputs, null, 2)}
-                    </pre>
+                {isExpanded && (
+                  <div id={`decision-details-${item.decision_id}`} className="mt-3 rounded border-t border-slate-800 bg-slate-950/60 p-2.5 pt-3 font-mono text-[11px]">
+                    {item.inputs && Object.keys(item.inputs).length > 0 ? (
+                      <>
+                        <div className="mb-1 font-semibold text-slate-400">Decision inputs</div>
+                        <pre className="overflow-x-auto text-slate-300">
+                          {JSON.stringify(item.inputs, null, 2)}
+                        </pre>
+                      </>
+                    ) : (
+                      <div className="text-slate-500">No structured inputs were recorded.</div>
+                    )}
                   </div>
                 )}
               </div>

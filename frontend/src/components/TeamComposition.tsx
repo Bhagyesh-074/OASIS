@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Network, Terminal, Tag, FileText } from 'lucide-react';
+import { Users, Network, Terminal, Tag, Cpu, Coins, Hash } from 'lucide-react';
 import { RunDetail } from '../types';
 
 interface TeamCompositionProps {
@@ -12,69 +12,78 @@ export const TeamComposition: React.FC<TeamCompositionProps> = ({ run }) => {
   const origin = teamConfig?.origin || run.arm || 'unknown';
 
   return (
-    <div className="bg-[#131B2E] border border-slate-800 rounded-xl p-6 shadow-xl flex flex-col gap-5">
+    <section className="flex flex-col gap-5 rounded-2xl border border-white/[0.07] bg-gradient-to-br from-[#111a29] to-[#0d131e] p-5 shadow-[0_20px_60px_-50px_rgba(56,189,248,0.28)] sm:p-6">
       {/* Header & Task metadata */}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
           <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-            <Users className="w-5 h-5 text-sky-400" />
-            <span>Team Composition & Topology</span>
+            <Users className="h-5 w-5 text-sky-300" />
+            <span>Team configuration</span>
           </h2>
           <div className="flex items-center gap-2">
-            <span className="text-xs px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-sky-300 font-mono flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-slate-950/45 px-2.5 py-1.5 text-[10px] font-mono text-sky-200">
               <Network className="w-3.5 h-3.5" />
-              {teamConfig?.topology || 'hub_and_spoke'}
+              {teamConfig?.topology || 'Topology unavailable'}
             </span>
-            <span className="text-xs px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-purple-300 font-mono flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-slate-950/45 px-2.5 py-1.5 text-[10px] font-mono text-indigo-200">
               <Tag className="w-3.5 h-3.5" />
-              Origin: {origin}
+              {origin}
             </span>
-            <span className="text-xs px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-amber-300 font-mono">
-              Tier: {run.complexity_tier || 'moderate'}
+            <span className="rounded-lg border border-white/[0.07] bg-slate-950/45 px-2.5 py-1.5 text-[10px] font-mono text-slate-300">
+              {teamConfig ? `${teamConfig.team_size} ${teamConfig.team_size === 1 ? 'agent' : 'agents'}` : 'Team size unavailable'}
             </span>
           </div>
         </div>
 
-        {run.task_statement && (
-          <div className="bg-slate-900/60 p-3.5 rounded-lg border border-slate-800/80 text-sm text-slate-300 font-mono mt-3 flex items-start gap-2.5">
-            <FileText className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-            <div className="line-clamp-2">{run.task_statement}</div>
-          </div>
-        )}
       </div>
 
       {/* Agents / Roles Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {roles.map((role: any, idx: number) => (
+      {roles.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-white/[0.09] bg-slate-950/20 px-4 py-8 text-center text-sm text-slate-500">
+          No role configuration was recorded for this run.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {roles.map((role, idx) => (
           <div
-            key={idx}
-            className="bg-slate-900/70 border border-slate-800 rounded-lg p-4 flex flex-col justify-between hover:border-slate-700 transition-colors"
+            key={`${role.role}-${idx}`}
+            className="group flex flex-col justify-between rounded-xl border border-white/[0.07] bg-slate-950/35 p-4 transition hover:border-sky-300/20 hover:bg-slate-950/55"
           >
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-slate-100 text-sm">                {role.role}</span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                  T={role.temperature}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-semibold text-slate-100">{role.role}</span>
+                <span className="shrink-0 rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-[10px] font-mono text-slate-400">
+                  temp {role.temperature}
                 </span>
               </div>
-              <div className="text-xs font-mono text-sky-400 truncate mb-3">
+              <div className="truncate text-[11px] font-mono text-sky-200/80" title={role.model}>
                 {role.model}
               </div>
             </div>
 
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
-                <Terminal className="w-3 h-3" /> Template
+            <div className="mt-4 border-t border-white/[0.06] pt-3">
+              <div className="mb-3 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <Terminal className="h-3 w-3" /> {role.template_id}
               </div>
-              <div className="flex flex-wrap gap-1">
-                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700 font-mono">
-                  {role.template_id}
-                </span>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <div className="flex items-center gap-1 text-[9px] text-slate-600"><Cpu className="h-3 w-3" /> Est. tokens</div>
+                  <div className="mt-1 text-[11px] font-mono text-slate-300">{role.est_tokens.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1 text-[9px] text-slate-600"><Coins className="h-3 w-3" /> Est. cost</div>
+                  <div className="mt-1 text-[11px] font-mono text-slate-300">${role.est_cost_usd.toFixed(3)}</div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1 text-[9px] text-slate-600"><Hash className="h-3 w-3" /> Calls</div>
+                  <div className="mt-1 text-[11px] font-mono text-slate-300">{role.est_calls}</div>
+                </div>
               </div>
             </div>
           </div>
         ))}
-      </div>
-    </div>
+        </div>
+      )}
+    </section>
   );
 };

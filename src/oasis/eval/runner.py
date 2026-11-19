@@ -1,21 +1,18 @@
 """Async benchmark runner and matrix execution harness (FR-26, FR-30, NFR-1, NFR-3).
 
-Executes the eight-configuration ablation matrix:
+Supports the following currently executable ablation arms:
 1. vanilla_fixed
 2. single_agent
-3. captainagent
-4. tce_only
-5. rbe_only
-6. monitor_only
-7. tce_rbe
-8. full
+3. tce_only
+4. rbe_only
+5. tce_rbe
 
 Operational constraints:
 - Bounded concurrency via asyncio.Semaphore (default 8 per DEPLOYMENT.md).
 - Global API spend ceiling checked after every tranche (NFR-3).
 - Live mode uses LiteLLM; replay mode reads the recorded JSONL cache.
 - FakeLLM is used only when explicitly injected by tests.
-- Arms depending on the unimplemented monitor/replacement components fail explicitly.
+- Arms depending on unavailable components fail explicitly.
 """
 
 from __future__ import annotations
@@ -37,12 +34,12 @@ from oasis.adapters.autogen_adapter import AutoGenAdapter
 from oasis.adapters.base import AdapterBase
 from oasis.adapters.crewai_stub import CrewAIStub
 from oasis.adapters.langgraph_adapter import LangGraphAdapter
-from oasis.api.routes_estimate import _estimate_mvts
 from oasis.api.routes_runs import broadcast_run_event
 from oasis.db.models import (
     AgentInstanceRecord,
     AgentOutputRecord,
     Database,
+    DecisionLogRecord,
     RunRecord,
     TaskRecord,
     TeamConfigRecord,
@@ -53,15 +50,19 @@ from oasis.gateway.jsonl_sink import JSONLSink
 from oasis.gateway.litellm_hooks import Gateway, GatewayHaltError
 from oasis.rbe.budget import Budget, BudgetState
 from oasis.rbe.reducer import BudgetInfeasibleError, TeamReducer
+from oasis.tce import estimate as estimate_complexity
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent.parent / "config"
 
-_EXECUTABLE_ARMS = frozenset({
+DEFAULT_MATRIX_ARMS = (
     "vanilla_fixed",
     "single_agent",
     "tce_only",
     "rbe_only",
     "tce_rbe",
+)
+_EXECUTABLE_ARMS = frozenset({
+    *DEFAULT_MATRIX_ARMS,
 })
 _UNAVAILABLE_ARMS = {
     "captainagent": "the CaptainAgent baseline adapter is not implemented",
@@ -173,6 +174,8 @@ class BenchmarkRunner:
     ) -> None:
         if mode not in ("live", "replay"):
             raise ValueError(f"Unsupported run mode: {mode!r}; expected 'live' or 'replay'")
+        if concurrency < 1:
+            raise ValueError("concurrency must be a positive integer")
         self.db = db or Database()
         self.concurrency = concurrency
         self.mode = mode
@@ -204,10 +207,23 @@ class BenchmarkRunner:
         raise ValueError(f"Unsupported framework: '{framework}'")
 
     def prepare_team_roles(
-        self, task: TaskRecord, arm: str, budget: Budget
+        self,
+        task: TaskRecord,
+        arm: str,
+        budget: Budget,
+        run_id: str | None = None,
     ) -> tuple[list[dict[str, Any]], str, list[dict[str, Any]]]:
         """Configure team roles and pre-execution reductions for the chosen arm."""
-        all_roles = ["researcher", "analyst", "planner", "executor", "reviewer", "synthesizer"]
+        all_roles = [
+            "researcher",
+            "analyst",
+            "planner",
+            "executor",
+            "reviewer",
+            "synthesizer",
+            "editor",
+            "verifier",
+        ]
         roles: list[dict[str, Any]] = []
         origin = "baseline"
         reductions: list[dict[str, Any]] = []
@@ -231,7 +247,18 @@ class BenchmarkRunner:
             ]
         elif arm in ("tce_only", "tce_rbe", "full"):
             origin = "estimator"
-            mvts, _, _, _ = _estimate_mvts(task.statement, task.domain)
+            estimate_result = estimate_complexity(task.statement, domain=task.domain)
+            mvts = estimate_result.mvts
+            if run_id is not None:
+                self.db.insert_decision(
+                    DecisionLogRecord(
+                        run_id=run_id,
+                        component="TCE",
+                        decision="estimate_mvts",
+                        inputs_json=estimate_result.model_dump(mode="json"),
+                        justification=estimate_result.justification,
+                    )
+                )
             for i in range(mvts):
                 roles.append({
                     "role": all_roles[i % len(all_roles)],
@@ -319,11 +346,8 @@ class BenchmarkRunner:
 
         budget_state = BudgetState(run_budget)
 
-        # 2. Pre-execution Team Configuration
+        # 2. Create the run before planning so estimator decisions can be linked to it.
         t0_orch = time.perf_counter()
-        roles, origin, _reductions = self.prepare_team_roles(task, arm, run_budget)
-
-        # 3. Create Run & Team Records in DB
         budget_dict = {
             "max_tokens": run_budget.max_tokens,
             "max_cost_usd": run_budget.max_cost_usd,
@@ -352,6 +376,24 @@ class BenchmarkRunner:
                 f"Run {run_id!r} cannot start from status {existing_run.status!r}"
             )
 
+        try:
+            roles, origin, _reductions = self.prepare_team_roles(
+                task,
+                arm,
+                run_budget,
+                run_id=run_id,
+            )
+        except Exception as exc:
+            self.db.update_run_status(
+                run_id,
+                status="failed",
+                status_detail=f"planning_error: {type(exc).__name__}",
+                ended_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            )
+            logger.error("Run %s failed during planning (%s)", run_id, type(exc).__name__)
+            raise
+
+        # 3. Record team configuration and initial agent instances.
         # Record team config
         team_cfg = TeamConfigRecord(
             run_id=run_id,
@@ -540,7 +582,7 @@ class BenchmarkRunner:
     async def run_matrix(
         self,
         tasks: Sequence[TaskRecord],
-        arms: Sequence[str] = ("vanilla_fixed", "full"),
+        arms: Sequence[str] = DEFAULT_MATRIX_ARMS,
         seeds: Sequence[int] = (1,),
         job_id: str | None = None,
         concurrency: int | None = None,
@@ -548,6 +590,21 @@ class BenchmarkRunner:
         tranche_size: int = 10,
     ) -> list[RunRecord]:
         """Execute the matrix across tasks, arms, and seeds with bounded concurrency."""
+        if tranche_size < 1:
+            raise ValueError("tranche_size must be a positive integer")
+        if concurrency is not None and concurrency < 1:
+            raise ValueError("concurrency must be a positive integer")
+        if len({task.task_id for task in tasks}) != len(tasks):
+            raise ValueError("Benchmark matrix tasks must have unique task IDs")
+        if any(task.split != "eval" for task in tasks):
+            raise ValueError("Benchmark matrix accepts evaluation-split tasks only")
+        if not tasks or not arms or not seeds:
+            raise ValueError("Benchmark matrix needs at least one task, arm, and seed")
+        if len(set(arms)) != len(arms):
+            raise ValueError("Benchmark matrix arms must be unique")
+        if len(set(seeds)) != len(seeds):
+            raise ValueError("Benchmark matrix seeds must be unique")
+
         unknown = [arm for arm in arms if arm not in _EXECUTABLE_ARMS and arm not in _UNAVAILABLE_ARMS]
         if unknown:
             raise ValueError(f"Unsupported benchmark arm(s): {unknown}")
@@ -558,7 +615,7 @@ class BenchmarkRunner:
                 f"Cannot execute matrix arm {arm!r}: {_UNAVAILABLE_ARMS[arm]}"
             )
 
-        limit = concurrency or self.concurrency
+        limit = concurrency if concurrency is not None else self.concurrency
         semaphore = asyncio.Semaphore(limit)
         all_results: list[RunRecord] = []
 

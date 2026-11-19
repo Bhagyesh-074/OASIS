@@ -1,7 +1,7 @@
 """Statistical protocol and significance testing module (FR-29, TESTING.md).
 
 Implements:
-- 10,000-resample bootstrap 95% confidence intervals (BCa / percentile).
+- 10,000-resample percentile bootstrap 95% confidence intervals.
 - Paired Wilcoxon signed-rank tests across tasks against a reference arm.
 - Rank-biserial effect sizes for paired non-parametric differences.
 - Holm-Bonferroni step-down correction for family-wise multiple testing.
@@ -47,6 +47,14 @@ def bootstrap_ci(
         (point_estimate, ci_lower, ci_upper)
     """
     arr = np.asarray(data, dtype=float)
+    if arr.ndim != 1:
+        raise ValueError("Bootstrap observations must be one-dimensional")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+    if n_resamples < 1:
+        raise ValueError("n_resamples must be positive")
+    if np.isinf(arr).any():
+        raise ValueError("Bootstrap observations must not contain infinity")
     arr = arr[~np.isnan(arr)]
     if len(arr) == 0:
         return 0.0, 0.0, 0.0
@@ -64,6 +72,8 @@ def bootstrap_ci(
     # Generate bootstrap replicates efficiently with vectorized sampling
     resamples = rng.choice(arr, size=(n_resamples, len(arr)), replace=True)
     resample_stats = np.apply_along_axis(stat_fn, 1, resamples)
+    if not np.isfinite(resample_stats).all():
+        raise ValueError("stat_fn must return finite values for bootstrap samples")
 
     alpha = 1.0 - confidence
     lower_pct = 100.0 * (alpha / 2.0)
@@ -101,6 +111,12 @@ def wilcoxon_paired_test(
         raise ValueError(
             f"Paired samples must have identical length: {len(arr_a)} != {len(arr_b)}"
         )
+    if arr_a.ndim != 1 or arr_b.ndim != 1:
+        raise ValueError("Paired samples must be one-dimensional")
+    if alternative not in {"two-sided", "greater", "less"}:
+        raise ValueError(f"Unsupported Wilcoxon alternative: {alternative!r}")
+    if np.isinf(arr_a).any() or np.isinf(arr_b).any():
+        raise ValueError("Paired samples must not contain infinity")
 
     # Filter out pairs with NaNs
     valid = ~(np.isnan(arr_a) | np.isnan(arr_b))
@@ -114,12 +130,8 @@ def wilcoxon_paired_test(
     if len(non_zero) == 0:
         return 0.0, 1.0
 
-    try:
-        res = stats.wilcoxon(a_valid, b_valid, alternative=alternative)
-        return float(res.statistic), float(res.pvalue)
-    except ValueError:
-        # Handles edge cases in small sample tests
-        return 0.0, 1.0
+    res = stats.wilcoxon(a_valid, b_valid, alternative=alternative)
+    return float(res.statistic), float(res.pvalue)
 
 
 def rank_biserial_effect_size(
@@ -135,8 +147,13 @@ def rank_biserial_effect_size(
 
     if len(arr_a) != len(arr_b):
         raise ValueError("Samples must have equal length for paired effect size")
+    if arr_a.ndim != 1 or arr_b.ndim != 1:
+        raise ValueError("Paired samples must be one-dimensional")
+    if np.isinf(arr_a).any() or np.isinf(arr_b).any():
+        raise ValueError("Paired samples must not contain infinity")
 
-    diffs = arr_a - arr_b
+    valid = ~(np.isnan(arr_a) | np.isnan(arr_b))
+    diffs = arr_a[valid] - arr_b[valid]
     non_zero = diffs[diffs != 0]
     if len(non_zero) == 0:
         return 0.0
@@ -161,6 +178,8 @@ def holm_bonferroni(p_values: Sequence[float]) -> list[float]:
     m = len(p_values)
     if m == 0:
         return []
+    if any(not np.isfinite(p) or p < 0.0 or p > 1.0 for p in p_values):
+        raise ValueError("p-values must be finite values between 0 and 1")
     if m == 1:
         return [float(p_values[0])]
 
@@ -197,7 +216,9 @@ def compute_recall_by_type_and_severity(
         or "severity" not in df.columns
         or "detected" not in df.columns
     ):
-        return {}
+        raise ValueError("Each detection record needs failure_type, severity, and detected")
+    if not df["detected"].isin([True, False, 0, 1]).all():
+        raise ValueError("detected values must be boolean or 0/1")
 
     grouped = (
         df.groupby(["failure_type", "severity"])["detected"]
@@ -330,6 +351,15 @@ def compute_metrics_summary(
             and "task_id" in arm_df.columns
             and "seed" in arm_df.columns
         ):
+            if arm_df.duplicated(["task_id", "seed"]).any():
+                raise ValueError(
+                    f"Arm {arm!r} contains duplicate task/seed observations"
+                )
+            if ref_df.duplicated(["task_id", "seed"]).any():
+                raise ValueError(
+                    f"Reference arm {reference_arm!r} contains duplicate "
+                    "task/seed observations"
+                )
             merged = pd.merge(
                 arm_df[["task_id", "seed", "quality_composite"]],
                 ref_df[["task_id", "seed", "quality_composite"]],

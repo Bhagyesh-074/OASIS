@@ -40,6 +40,12 @@ class TestBootstrapCI:
         assert low >= 1.0
         assert high <= 9.0
 
+    def test_invalid_bootstrap_parameters_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="confidence"):
+            bootstrap_ci([1.0, 2.0], confidence=1.0)
+        with pytest.raises(ValueError, match="n_resamples"):
+            bootstrap_ci([1.0, 2.0], n_resamples=0)
+
 
 class TestWilcoxonPaired:
     """Validate paired Wilcoxon signed-rank testing."""
@@ -62,6 +68,10 @@ class TestWilcoxonPaired:
         """Sample length mismatch raises ValueError."""
         with pytest.raises(ValueError):
             wilcoxon_paired_test([1.0, 2.0], [1.0])
+
+    def test_invalid_alternative_is_not_silently_reported_as_nonsignificant(self) -> None:
+        with pytest.raises(ValueError, match="alternative"):
+            wilcoxon_paired_test([2.0, 3.0], [1.0, 1.0], alternative="invalid")
 
 
 class TestRankBiserialEffectSize:
@@ -114,6 +124,10 @@ class TestHolmBonferroni:
         adj = holm_bonferroni(raw)
         assert all(p <= 1.0 for p in adj)
 
+    def test_invalid_p_values_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="p-values"):
+            holm_bonferroni([0.05, 1.2])
+
 
 class TestMetricsSummaryAndRecall:
     """Validate aggregate summary generation."""
@@ -128,6 +142,10 @@ class TestMetricsSummaryAndRecall:
         recall = compute_recall_by_type_and_severity(records)
         assert recall["topical_drift"]["subtle"] == 0.5
         assert recall["numeric_perturb"]["gross"] == 1.0
+
+    def test_detection_records_require_all_fields(self) -> None:
+        with pytest.raises(ValueError, match="failure_type"):
+            compute_recall_by_type_and_severity([{"detected": True}])
 
     def test_compute_metrics_summary(self) -> None:
         """Full metrics table generation with cross-arm comparison."""
@@ -237,3 +255,22 @@ class TestMetricsSummaryAndRecall:
         assert single_agent["wilcoxon_p_value"] is None
         assert single_agent["effect_size"] is None
         assert single_agent["holm_adjusted_p_value"] is None
+
+    def test_duplicate_task_seed_pairs_are_rejected(self) -> None:
+        duplicate = {
+            "arm": "full",
+            "task_id": "t1",
+            "seed": 1,
+            "quality_composite": 0.8,
+            "total_cost_usd": 0.1,
+            "total_tokens": 10,
+            "wall_ms": 10,
+            "compliant_all": 1,
+        }
+        runs = [
+            {**duplicate, "arm": "vanilla_fixed", "quality_composite": 0.7},
+            duplicate,
+            {**duplicate, "run_id": "duplicate", "quality_composite": 0.9},
+        ]
+        with pytest.raises(ValueError, match="duplicate task/seed"):
+            compute_metrics_summary(runs, n_resamples=20)

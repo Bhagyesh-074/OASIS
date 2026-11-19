@@ -54,13 +54,13 @@ export interface RunQuality {
 
 export interface RunDetail {
   run_id: string;
-  benchmark_task_id?: string;
+  task_id?: string | null;
+  task_statement?: string | null;
   status: RunStatus;
   status_detail?: string | null;
   arm?: string;
   seed?: number;
   framework?: string;
-  task_statement?: string;
   complexity_tier?: string;
   config?: TeamConfig | null;
   totals: RunTotals;

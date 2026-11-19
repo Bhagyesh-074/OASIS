@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from pathlib import Path
@@ -23,6 +24,7 @@ from oasis.gateway._hash import hash_request
 from oasis.gateway.fake_llm import FakeLLM
 from oasis.gateway.jsonl_sink import JSONLSink
 from oasis.rbe.budget import Budget
+from oasis.tce.types import Estimate, SubScores
 
 
 @pytest.fixture
@@ -115,6 +117,101 @@ async def test_unknown_and_oracle_arms_are_rejected(
         await runner.run_task(task, arm="oracle")
 
     assert db.list_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_matrix_rejects_calibration_tasks_before_creating_runs(
+    runner_env: tuple[Database, BenchmarkRunner],
+) -> None:
+    """Calibration examples must never enter evaluation-arm runs."""
+    db, runner = runner_env
+    calibration_task = TaskRecord(
+        task_id="calibration_only",
+        domain="code_generation",
+        source="mbpp",
+        statement="Return the input unchanged",
+        split="calibration",
+    )
+    db.insert_task(calibration_task)
+
+    with pytest.raises(ValueError, match="evaluation-split"):
+        await runner.run_matrix([calibration_task], arms=["single_agent"], seeds=[1])
+
+    assert db.list_runs() == []
+    assert runner.fake_llm is not None
+    assert runner.fake_llm.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_matrix_rejects_invalid_execution_bounds(
+    runner_env: tuple[Database, BenchmarkRunner],
+) -> None:
+    _, runner = runner_env
+    task = TaskRecord(
+        task_id="bounded_task",
+        domain="code_generation",
+        source="mbpp",
+        statement="Return the input unchanged",
+        split="eval",
+    )
+
+    with pytest.raises(ValueError, match="tranche_size"):
+        await runner.run_matrix([task], arms=["single_agent"], tranche_size=0)
+    with pytest.raises(ValueError, match="concurrency"):
+        await runner.run_matrix([task], arms=["single_agent"], concurrency=0)
+
+
+@pytest.mark.asyncio
+async def test_tce_arm_uses_configured_estimator_and_persists_run_decision(
+    runner_env: tuple[Database, BenchmarkRunner],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db, runner = runner_env
+    task = TaskRecord(
+        task_id="tce_task",
+        domain="code_generation",
+        source="mbpp",
+        statement="Design, implement, and test a parser.",
+        split="eval",
+    )
+    db.insert_task(task)
+
+    def estimate(statement: str, domain: str) -> Estimate:
+        assert statement == task.statement
+        assert domain == task.domain
+        return Estimate(
+            mvts=8,
+            subscores=SubScores(subtask_count=3, skill_clusters=2, dep_density=0.5),
+            weights={"subtask_count": 0.4, "skill_clusters": 0.4, "dep_density": 0.2},
+            contributions={
+                "subtask_count": 0.2,
+                "skill_clusters": 0.1,
+                "dep_density": 0.1,
+            },
+            subtasks=["Design", "implement", "test"],
+            justification="MVTS=8 from the configured estimator",
+            latency_ms=1.0,
+        )
+
+    monkeypatch.setattr("oasis.eval.runner.estimate_complexity", estimate)
+
+    result = await runner.run_task(task, arm="tce_only", seed=1)
+
+    team = db.get_team_config(result.run_id)
+    assert team is not None
+    assert team.team_size == 8
+    roles = (
+        json.loads(team.roles_json)
+        if isinstance(team.roles_json, str)
+        else team.roles_json
+    )
+    role_names = [role["role"] for role in roles]
+    assert len(set(role_names)) == 8
+    decisions = db.get_decisions(result.run_id)
+    assert len(decisions) == 1
+    assert decisions[0].component == "TCE"
+    assert decisions[0].decision == "estimate_mvts"
+    assert decisions[0].justification == "MVTS=8 from the configured estimator"
 
 
 @pytest.mark.asyncio
