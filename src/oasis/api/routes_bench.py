@@ -3,29 +3,92 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import ulid
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from oasis.api.schemas import BenchmarkJobRequest, BenchmarkJobResponse
 from oasis.db.models import Database
 from oasis.eval.stats import compute_metrics_summary
 
 router = APIRouter(tags=["Benchmark"])
+logger = logging.getLogger(__name__)
 
 # In-memory registry of submitted benchmark jobs
 _BENCHMARK_JOBS: dict[str, dict[str, Any]] = {}
 
 
+async def _execute_benchmark_job(
+    job_id: str,
+    request: BenchmarkJobRequest,
+    tasks: list[Any],
+) -> None:
+    """Run a submitted matrix job and persist its observable progress."""
+    job = _BENCHMARK_JOBS[job_id]
+    job["status"] = "running"
+
+    try:
+        from oasis.eval.runner import BenchmarkRunner, load_budget_profile
+
+        runner = BenchmarkRunner(
+            concurrency=request.concurrency,
+            mode=request.mode,
+        )
+        results = await runner.run_matrix(
+            tasks=tasks,
+            arms=request.arms,
+            seeds=request.seeds,
+            job_id=job_id,
+            concurrency=request.concurrency,
+            budget=load_budget_profile(request.budget_profile),
+        )
+    except NotImplementedError as exc:
+        logger.info("Benchmark job %s rejected by runner: %s", job_id, exc)
+        job["status"] = "failed"
+        job["status_detail"] = str(exc)
+        job["failed_runs"] = job["total_runs"]
+        return
+    except Exception as exc:  # noqa: BLE001 — background jobs must report terminal failure.
+        logger.error("Benchmark job %s failed before completion (%s)", job_id, type(exc).__name__)
+        job["status"] = "failed"
+        job["status_detail"] = f"execution_error: {type(exc).__name__}"
+        job["failed_runs"] = job["total_runs"] - job["completed_runs"]
+        return
+
+    completed = sum(run.status in ("completed", "halted_budget") for run in results)
+    failed = len(results) - completed
+    job["completed_runs"] = completed
+    job["failed_runs"] = failed + max(0, job["total_runs"] - len(results))
+    job["spend_usd"] = round(sum(run.total_cost_usd for run in results), 4)
+    job["status"] = (
+        "completed"
+        if len(results) == job["total_runs"] and job["failed_runs"] == 0
+        else "failed"
+    )
+    if job["status"] == "failed" and job["failed_runs"]:
+        job["status_detail"] = "One or more matrix runs failed or were not started"
+
+
 @router.post("/v1/benchmark/jobs", response_model=BenchmarkJobResponse)
-def submit_benchmark_job(req: BenchmarkJobRequest) -> BenchmarkJobResponse:
+def submit_benchmark_job(
+    req: BenchmarkJobRequest,
+    background_tasks: BackgroundTasks,
+) -> BenchmarkJobResponse:
     """Submit a benchmark ablation matrix job (API_SPEC.md)."""
     db = Database()
     tasks = db.list_tasks(split=req.task_split)
-    task_count = len(tasks) if tasks else 10  # Fallback task count if not yet seeded
+    if not tasks:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "validation_error",
+                "message": f"No tasks are available in the {req.task_split!r} split",
+            },
+        )
 
-    total_runs = task_count * len(req.arms) * len(req.seeds)
+    total_runs = len(tasks) * len(req.arms) * len(req.seeds)
     job_id = str(ulid.ULID())
 
     job_data: dict[str, Any] = {
@@ -36,13 +99,14 @@ def submit_benchmark_job(req: BenchmarkJobRequest) -> BenchmarkJobResponse:
         "completed_runs": 0,
         "failed_runs": 0,
         "spend_usd": 0.0,
+        "status_detail": None,
         "arms": req.arms,
         "seeds": req.seeds,
         "mode": req.mode,
     }
     _BENCHMARK_JOBS[job_id] = job_data
 
-    return BenchmarkJobResponse(
+    response = BenchmarkJobResponse(
         job_id=job_id,
         name=req.name,
         status="queued",
@@ -51,6 +115,8 @@ def submit_benchmark_job(req: BenchmarkJobRequest) -> BenchmarkJobResponse:
         failed_runs=0,
         spend_usd=0.0,
     )
+    background_tasks.add_task(_execute_benchmark_job, job_id, req, tasks)
+    return response
 
 
 @router.get("/v1/benchmark/jobs/{job_id}", response_model=BenchmarkJobResponse)
@@ -86,11 +152,12 @@ def get_benchmark_job(job_id: str) -> BenchmarkJobResponse:
     failed = sum(1 for r in runs if r.status in ("failed", "cancelled"))
     spend = sum(r.total_cost_usd for r in runs)
 
-    info["completed_runs"] = completed
-    info["failed_runs"] = failed
-    info["spend_usd"] = round(spend, 4)
-    if completed + failed >= info["total_runs"] and info["total_runs"] > 0:
-        info["status"] = "completed"
+    if info["status"] in ("queued", "running"):
+        info["completed_runs"] = completed
+        info["failed_runs"] = failed
+        info["spend_usd"] = round(spend, 4)
+        if completed + failed >= info["total_runs"] and info["total_runs"] > 0:
+            info["status"] = "failed" if failed else "completed"
 
     return BenchmarkJobResponse(**info)
 
@@ -111,6 +178,8 @@ def get_metrics_summary(
 
     run_dicts: list[dict[str, Any]] = []
     for r in runs:
+        if r.status not in ("completed", "halted_budget"):
+            continue
         budget_dict = (
             json.loads(r.budget_json)
             if isinstance(r.budget_json, str)
@@ -126,7 +195,7 @@ def get_metrics_summary(
             "job_id": r.job_id,
             "arm": r.arm,
             "seed": r.seed,
-            "quality_composite": r.quality_composite or 0.0,
+            "quality_composite": r.quality_composite,
             "total_cost_usd": r.total_cost_usd,
             "total_tokens": r.total_tokens,
             "wall_ms": r.wall_ms or 0,
@@ -138,4 +207,8 @@ def get_metrics_summary(
             "budget": budget_dict,
         })
 
-    return compute_metrics_summary(run_dicts, reference_arm=reference_arm, n_resamples=1000)
+    return compute_metrics_summary(
+        run_dicts,
+        reference_arm=reference_arm,
+        n_resamples=10000,
+    )

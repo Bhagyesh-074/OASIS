@@ -7,27 +7,16 @@ interface BudgetGaugesProps {
 }
 
 export const BudgetGauges: React.FC<BudgetGaugesProps> = ({ run }) => {
-  const budget = run.budget || {
-    max_tokens: 30000,
-    max_cost_usd: 0.15,
-    max_wall_seconds: 60,
-    max_calls: 20,
-  };
-  const totals = run.totals || {
-    tokens: 0,
-    cost_usd: 0,
-    wall_seconds: 0,
-    calls: 0,
-    supervision_tokens: 0,
-    supervision_share: 0,
-  };
-  const compliance = run.compliance || {
-    tokens: true,
-    cost: true,
-    wall: true,
-    calls: true,
-    all: true,
-  };
+  if (!run.budget) {
+    return (
+      <div className="bg-[#131B2E] border border-slate-800 rounded-xl p-6 text-sm text-slate-400">
+        Budget limits are unavailable for this run.
+      </div>
+    );
+  }
+  const budget = run.budget;
+  const totals = run.totals;
+  const compliance = run.compliance;
 
   const tokenPct = budget.max_tokens > 0 ? Math.min(100, (totals.tokens / budget.max_tokens) * 100) : 0;
   const costPct = budget.max_cost_usd > 0 ? Math.min(100, (totals.cost_usd / budget.max_cost_usd) * 100) : 0;

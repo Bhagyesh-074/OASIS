@@ -7,9 +7,9 @@ interface TeamCompositionProps {
 }
 
 export const TeamComposition: React.FC<TeamCompositionProps> = ({ run }) => {
-  const teamConfig = run.config || (run as any).team_config;
+  const teamConfig = run.config;
   const roles = teamConfig?.roles || [];
-  const origin = teamConfig?.origin || run.arm || 'tce';
+  const origin = teamConfig?.origin || run.arm || 'unknown';
 
   return (
     <div className="bg-[#131B2E] border border-slate-800 rounded-xl p-6 shadow-xl flex flex-col gap-5">
@@ -52,7 +52,7 @@ export const TeamComposition: React.FC<TeamCompositionProps> = ({ run }) => {
           >
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-slate-100 text-sm">{role.role_name}</span>
+                <span className="font-semibold text-slate-100 text-sm">                {role.role}</span>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
                   T={role.temperature}
                 </span>
@@ -64,21 +64,12 @@ export const TeamComposition: React.FC<TeamCompositionProps> = ({ run }) => {
 
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
-                <Terminal className="w-3 h-3" /> Tools
+                <Terminal className="w-3 h-3" /> Template
               </div>
               <div className="flex flex-wrap gap-1">
-                {role.tools && role.tools.length > 0 ? (
-                  role.tools.map((t: string, tIdx: number) => (
-                    <span
-                      key={tIdx}
-                      className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700 font-mono"
-                    >
-                      {t}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[10px] text-slate-500 italic">No tools</span>
-                )}
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700 font-mono">
+                  {role.template_id}
+                </span>
               </div>
             </div>
           </div>

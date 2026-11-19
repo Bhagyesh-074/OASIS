@@ -7,6 +7,9 @@ services:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
   dashboard:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_OASIS_API_KEY: ${OASIS_API_KEY:-dev-local-key}
     ports: ["5173:80"]
     depends_on: [api]

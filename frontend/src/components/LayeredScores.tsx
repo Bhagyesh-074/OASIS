@@ -44,7 +44,7 @@ export const LayeredScores: React.FC<LayeredScoresProps> = ({ scores, finalCompo
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {scores.map((sc, idx) => {
-                  const isPassing = sc.composite >= 0.7;
+                  const isPassing = sc.composite !== null && sc.composite >= 0.7;
                   return (
                     <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
                       <td className="py-2.5 px-3 text-xs text-slate-400 font-mono">
@@ -64,7 +64,7 @@ export const LayeredScores: React.FC<LayeredScoresProps> = ({ scores, finalCompo
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-slate-200 font-bold">
-                        {sc.composite.toFixed(3)}
+                        {sc.composite === null ? '—' : sc.composite.toFixed(3)}
                       </td>
                       <td className="py-2.5 px-3">
                         {isPassing ? (

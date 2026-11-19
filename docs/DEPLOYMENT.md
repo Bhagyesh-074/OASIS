@@ -52,7 +52,7 @@ cd frontend && npm ci && npm run dev   # :5173
 Smoke check before any real spend: `python -m oasis.bench smoke --tasks 5 --arm full --mode live --max-cost 1.00`.
 
 Docker
-docker compose up brings up two services — api (FastAPI plus all components, models baked into the image so first start is fast) and dashboard (nginx serving the built React bundle). Volumes mount ./data for SQLite and ./artifacts for the JSONL cache and results. There is no Redis service and no database service; both were removed with the single-process decision. The image builds in two stages, with the model download in the builder layer so it is cached.
+docker compose up brings up two services — api (FastAPI plus all components, models baked into the image so first start is fast) and dashboard (nginx serving the built React bundle). The dashboard build receives the configured OASIS_API_KEY as VITE_OASIS_API_KEY so its authenticated API requests use the same local key. Volumes mount ./data for SQLite and ./artifacts for the JSONL cache and results. There is no Redis service and no database service; both were removed with the single-process decision. The image builds in two stages, with the model download in the builder layer so it is cached.
 
 Cost controls
 Three independent guards, because a runaway agent loop is the documented failure mode this project exists partly to address and it would be embarrassing to reproduce it.

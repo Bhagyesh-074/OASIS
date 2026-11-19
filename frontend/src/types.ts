@@ -1,17 +1,21 @@
 export type RunStatus = 'queued' | 'running' | 'completed' | 'halted_budget' | 'failed' | 'cancelled';
 
 export interface RoleConfig {
-  role_name: string;
+  role: string;
+  template_id: string;
   model: string;
   temperature: number;
-  tools: string[];
+  est_tokens: number;
+  est_cost_usd: number;
+  est_wall_seconds: number;
+  est_calls: number;
 }
 
 export interface TeamConfig {
   config_id: string;
   team_size: number;
-  origin: 'tce' | 'cm' | 'reduced';
-  topology: 'hub_and_spoke' | 'pipeline' | 'hierarchical';
+  origin: 'estimator' | 'memory' | 'baseline' | 'oracle';
+  topology: 'linear' | 'hub_and_spoke' | 'parallel';
   roles: RoleConfig[];
   justification: string;
 }
@@ -62,7 +66,7 @@ export interface RunDetail {
   totals: RunTotals;
   compliance: RunCompliance;
   quality: RunQuality;
-  budget?: BudgetLimits;
+  budget?: BudgetLimits | null;
   replacements: number;
   replacements_denied: number;
   final_output_ref?: string | null;
@@ -96,16 +100,46 @@ export interface ScoreRecord {
   score_id: string;
   output_id?: string;
   layer: 'l1_embed' | 'l2_judge' | 'l3_verifier';
-  composite: number;
+  composite: number | null;
   timestamp?: string;
+}
+
+export interface RunEventData {
+  event_id?: string;
+  action?: string;
+  dimension?: string;
+  justification?: string;
+  outcome?: ReplacementEvent['outcome'];
+  incumbent_agent?: string;
+  replacement_candidate?: string;
+  trigger_reason?: string;
+  score_id?: string;
+  output_id?: string;
+  layer?: ScoreRecord['layer'];
+  composite?: number | null;
+  status?: RunStatus;
 }
 
 export interface SpendStatus {
   cumulative_spend_usd: number;
-  spend_ceiling_usd: number;
+  ceiling_usd: number;
   kill_multiplier: number;
-  hard_ceiling_usd: number;
-  ceiling_breached: boolean;
-  calls_count?: number;
-  updated_at?: string;
+  kill_ceiling_usd: number;
+  ceiling_exceeded: boolean;
+}
+
+export interface BenchmarkArmSummary {
+  total_runs: number;
+  quality: { median: number | null; ci_95: [number | null, number | null] };
+  cost_usd: { median: number; ci_95: [number, number] };
+  tokens: { median: number; ci_95: [number, number] };
+  compliance_rate: number;
+  wilcoxon_p_value: number | null;
+  effect_size: number | null;
+  holm_adjusted_p_value: number | null;
+}
+
+export interface BenchmarkSummary {
+  reference_arm: string;
+  arms: Record<string, BenchmarkArmSummary>;
 }

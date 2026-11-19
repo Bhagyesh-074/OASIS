@@ -200,3 +200,40 @@ class TestMetricsSummaryAndRecall:
         assert full_stats["replacements_denied"] == 1
         assert full_stats["replacement_suppression_rate"] == pytest.approx(1 / 3, rel=1e-2)
         assert full_stats["wilcoxon_p_value"] is not None
+
+    def test_missing_quality_is_not_reported_as_zero(self) -> None:
+        """Unscored runs must not become fabricated zero-quality observations."""
+        runs = [
+            {
+                "arm": "vanilla_fixed",
+                "task_id": "t1",
+                "seed": 1,
+                "quality_composite": None,
+                "total_cost_usd": 0.1,
+                "total_tokens": 100,
+                "wall_ms": 10,
+                "compliant_all": 1,
+            },
+            {
+                "arm": "single_agent",
+                "task_id": "t1",
+                "seed": 1,
+                "quality_composite": None,
+                "total_cost_usd": 0.05,
+                "total_tokens": 50,
+                "wall_ms": 8,
+                "compliant_all": 1,
+            },
+        ]
+
+        summary = compute_metrics_summary(runs, n_resamples=20)
+
+        assert summary["arms"]["vanilla_fixed"]["quality"] == {
+            "median": None,
+            "ci_95": [None, None],
+        }
+        single_agent = summary["arms"]["single_agent"]
+        assert single_agent["quality"]["median"] is None
+        assert single_agent["wilcoxon_p_value"] is None
+        assert single_agent["effect_size"] is None
+        assert single_agent["holm_adjusted_p_value"] is None

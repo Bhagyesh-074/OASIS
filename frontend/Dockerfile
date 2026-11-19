@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG VITE_OASIS_API_KEY=dev-local-key
+ENV VITE_OASIS_API_KEY=$VITE_OASIS_API_KEY
 RUN npm run build
 
 # Stage 2: Serve via Nginx

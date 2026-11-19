@@ -255,9 +255,16 @@ def compute_metrics_summary(
 
         # 1. Quality
         q_vals = arm_df["quality_composite"].dropna().values
-        q_med, q_low, q_high = bootstrap_ci(
-            q_vals, stat_fn=np.median, n_resamples=n_resamples
-        )
+        if len(q_vals):
+            q_med, q_low, q_high = bootstrap_ci(
+                q_vals, stat_fn=np.median, n_resamples=n_resamples
+            )
+            quality_summary = {
+                "median": round(q_med, 4),
+                "ci_95": [round(q_low, 4), round(q_high, 4)],
+            }
+        else:
+            quality_summary = {"median": None, "ci_95": [None, None]}
 
         # 2. Cost USD
         c_vals = arm_df["total_cost_usd"].dropna().values
@@ -314,35 +321,35 @@ def compute_metrics_summary(
         )
 
         # 8. Paired Wilcoxon and effect size vs reference arm
-        p_val = 1.0
-        effect_size = 0.0
+        p_val: float | None = None
+        effect_size: float | None = None
 
-        if ref_df is not None and arm != reference_arm:
-            # Pair on (task_id, seed) if available
-            if "task_id" in arm_df.columns and "seed" in arm_df.columns:
-                merged = pd.merge(
-                    arm_df[["task_id", "seed", "quality_composite"]],
-                    ref_df[["task_id", "seed", "quality_composite"]],
-                    on=["task_id", "seed"],
-                    suffixes=("_arm", "_ref"),
-                ).dropna()
-                if len(merged) > 0:
-                    _, p_val = wilcoxon_paired_test(
-                        merged["quality_composite_arm"].values,
-                        merged["quality_composite_ref"].values,
-                    )
-                    effect_size = rank_biserial_effect_size(
-                        merged["quality_composite_arm"].values,
-                        merged["quality_composite_ref"].values,
-                    )
-            arm_p_values.append((arm, p_val))
+        if (
+            ref_df is not None
+            and arm != reference_arm
+            and "task_id" in arm_df.columns
+            and "seed" in arm_df.columns
+        ):
+            merged = pd.merge(
+                arm_df[["task_id", "seed", "quality_composite"]],
+                ref_df[["task_id", "seed", "quality_composite"]],
+                on=["task_id", "seed"],
+                suffixes=("_arm", "_ref"),
+            ).dropna()
+            if len(merged) > 0:
+                _, p_val = wilcoxon_paired_test(
+                    merged["quality_composite_arm"].values,
+                    merged["quality_composite_ref"].values,
+                )
+                effect_size = rank_biserial_effect_size(
+                    merged["quality_composite_arm"].values,
+                    merged["quality_composite_ref"].values,
+                )
+                arm_p_values.append((arm, p_val))
 
         summary["arms"][arm] = {
             "total_runs": total_runs,
-            "quality": {
-                "median": round(q_med, 4),
-                "ci_95": [round(q_low, 4), round(q_high, 4)],
-            },
+            "quality": quality_summary,
             "cost_usd": {
                 "median": round(c_med, 4),
                 "ci_95": [round(c_low, 4), round(c_high, 4)],
@@ -363,8 +370,8 @@ def compute_metrics_summary(
             "replacements": replacements,
             "replacements_denied": denials,
             "replacement_suppression_rate": round(suppression_rate, 4),
-            "wilcoxon_p_value": round(p_val, 6) if arm != reference_arm else None,
-            "effect_size": round(effect_size, 4) if arm != reference_arm else None,
+            "wilcoxon_p_value": round(p_val, 6) if p_val is not None else None,
+            "effect_size": round(effect_size, 4) if effect_size is not None else None,
             "holm_adjusted_p_value": None,  # Will populate below
         }
 

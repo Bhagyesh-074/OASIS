@@ -5,16 +5,18 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import logging
 import os
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import ulid
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
 from oasis.api.schemas import (
+    BudgetModel,
     CancelRunResponse,
     DecisionListResponse,
     DecisionRecordResponse,
@@ -30,6 +32,7 @@ from oasis.api.schemas import (
 from oasis.db.models import Database, RunRecord, TaskRecord
 
 router = APIRouter(tags=["Runs"])
+logger = logging.getLogger(__name__)
 
 # In-memory pub/sub queues for live SSE broadcasting: run_id -> list of asyncio.Queue
 _RUN_EVENT_SUBSCRIBERS: dict[str, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
@@ -43,8 +46,62 @@ def broadcast_run_event(run_id: str, event_type: str, data: dict[str, Any]) -> N
         q.put_nowait(payload)
 
 
+async def _execute_single_run(run_id: str, request: RunCreateRequest) -> None:
+    """Execute a queued run in the background using the benchmark runner."""
+    db = Database()
+    run = db.get_run(run_id)
+    if run is None or run.status != "queued":
+        return
+
+    task = db.get_task(run.task_id)
+    if task is None:
+        db.update_run_status(
+            run_id,
+            status="failed",
+            status_detail=f"Task {run.task_id!r} no longer exists",
+            ended_at=datetime.datetime.now(datetime.UTC).isoformat(),
+        )
+        broadcast_run_event(run_id, "run_completed", {"run_id": run_id, "status": "failed"})
+        return
+
+    try:
+        from oasis.eval.runner import BenchmarkRunner
+        from oasis.rbe.budget import Budget
+
+        runner = BenchmarkRunner(db=db, mode=request.mode)
+        await runner.run_task(
+            task,
+            arm=request.arm,
+            seed=request.seed,
+            budget=Budget(**request.budget.model_dump()),
+            framework=request.framework,
+            run_id=run_id,
+        )
+    except NotImplementedError as exc:
+        logger.info("Run %s rejected by runner: %s", run_id, exc)
+        db.update_run_status(
+            run_id,
+            status="failed",
+            status_detail=str(exc),
+            ended_at=datetime.datetime.now(datetime.UTC).isoformat(),
+        )
+        broadcast_run_event(run_id, "run_completed", {"run_id": run_id, "status": "failed"})
+    except Exception as exc:  # noqa: BLE001 — background tasks must leave queued runs terminal.
+        logger.error("Run %s failed in background (%s)", run_id, type(exc).__name__)
+        db.update_run_status(
+            run_id,
+            status="failed",
+            status_detail=f"execution_error: {type(exc).__name__}",
+            ended_at=datetime.datetime.now(datetime.UTC).isoformat(),
+        )
+        broadcast_run_event(run_id, "run_completed", {"run_id": run_id, "status": "failed"})
+
+
 @router.post("/v1/runs", status_code=202, response_model=RunCreateResponse)
-def create_run(req: RunCreateRequest) -> RunCreateResponse:
+def create_run(
+    req: RunCreateRequest,
+    background_tasks: BackgroundTasks,
+) -> RunCreateResponse:
     """Start or enqueue a run. Returns immediately with 202 Accepted (API_SPEC.md)."""
     db = Database()
 
@@ -108,6 +165,7 @@ def create_run(req: RunCreateRequest) -> RunCreateResponse:
         started_at=datetime.datetime.now(datetime.UTC).isoformat(),
     )
     db.create_run(run_rec)
+    background_tasks.add_task(_execute_single_run, run_id, req)
 
     return RunCreateResponse(
         run_id=run_id,
@@ -189,6 +247,19 @@ def get_run(run_id: str) -> RunDetailResponse:
         seed=run.seed,
         framework=run.framework,
         config=team_config_model,
+        budget=(
+            BudgetModel.model_validate(budget_dict)
+            if all(
+                key in budget_dict
+                for key in (
+                    "max_tokens",
+                    "max_cost_usd",
+                    "max_wall_seconds",
+                    "max_calls",
+                )
+            )
+            else None
+        ),
         totals=RunTotalsModel(
             tokens=run.total_tokens,
             cost_usd=round(run.total_cost_usd, 4),

@@ -119,7 +119,9 @@ export const ExplainabilityLog: React.FC<ExplainabilityLogProps> = ({ decisions 
                   </div>
 
                   <span className="text-[11px] text-slate-500 font-mono shrink-0">
-                    {item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : ''}
+                    {item.ts || item.timestamp
+                      ? new Date(item.ts || item.timestamp || '').toLocaleTimeString()
+                      : ''}
                   </span>
                 </div>
 

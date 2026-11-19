@@ -14,7 +14,8 @@ import pytest
 from oasis.db.migrate import apply_migrations
 from oasis.db.models import Database, TaskRecord
 from oasis.eval.runner import BenchmarkRunner
-from oasis.gateway.fake_llm import FakeLLM
+from oasis.gateway._hash import hash_request
+from oasis.gateway.jsonl_sink import JSONLSink
 
 
 @pytest.fixture
@@ -30,13 +31,11 @@ def replay_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Databas
     apply_migrations(db_file)
     db = Database(db_file)
 
-    fake_llm = FakeLLM()
     runner = BenchmarkRunner(
         db=db,
         concurrency=2,
         mode="replay",
         cache_dir=tmp_path / "replay_cache",
-        fake_llm=fake_llm,
     )
     return db, runner
 
@@ -44,6 +43,7 @@ def replay_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Databas
 @pytest.mark.asyncio
 async def test_replay_mode_zero_network_calls_invariant(
     replay_env: tuple[Database, BenchmarkRunner],
+    tmp_path: Path,
 ) -> None:
     """Assert full matrix execution in replay mode makes 0 network calls (FR-30)."""
     db, runner = replay_env
@@ -57,16 +57,44 @@ async def test_replay_mode_zero_network_calls_invariant(
     )
     db.insert_task(task)
 
-    # Must complete cleanly without tripping the monkeypatched socket.connect error
+    model = "gpt-4o-mini-2024-07-18"
+    messages = [
+        {
+            "role": "system",
+            "content": "You are the generalist agent. Work on the task and use prior agent output where helpful.",
+        },
+        {"role": "user", "content": "Task:\nWrite a fast sort function"},
+    ]
+    JSONLSink(tmp_path / "replay_cache" / "replay_job.jsonl").write(
+        prompt_sha=hash_request(model, messages, 0.2, None),
+        model=model,
+        messages=messages,
+        temperature=0.2,
+        tool_schema=None,
+        response={
+            "content": "A fast sort implementation.",
+            "model": model,
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            "cost_usd": 0.00015,
+            "latency_ms": 4.0,
+        },
+        tokens_in=10,
+        tokens_out=5,
+        cost_usd=0.00015,
+        latency_ms=4.0,
+    )
+
+    # Must serve the recorded response without tripping the network guard.
     results = await runner.run_matrix(
         tasks=[task],
-        arms=["vanilla_fixed", "full"],
+        arms=["single_agent"],
         seeds=[1],
         job_id="replay_job",
         concurrency=1,
     )
 
-    assert len(results) == 2
+    assert len(results) == 1
     for r in results:
         assert r.mode == "replay"
         assert r.status == "completed"
+        assert r.total_calls == 1

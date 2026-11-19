@@ -40,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const spendPercent = spend
-    ? Math.min(100, (spend.cumulative_spend_usd / spend.spend_ceiling_usd) * 100)
+    ? Math.min(100, (spend.cumulative_spend_usd / spend.ceiling_usd) * 100)
     : 0;
 
   return (
@@ -70,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex justify-between text-xs gap-4 font-mono">
                 <span className="text-slate-400">Global Spend:</span>
                 <span className="font-semibold text-slate-200">
-                  ${spend.cumulative_spend_usd.toFixed(2)} / ${spend.spend_ceiling_usd.toFixed(2)}
+                  ${spend.cumulative_spend_usd.toFixed(2)} / ${spend.ceiling_usd.toFixed(2)}
                 </span>
               </div>
               <div className="w-40 h-1.5 bg-slate-800 rounded-full mt-1.5 overflow-hidden">

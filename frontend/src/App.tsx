@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { BudgetGauges } from './components/BudgetGauges';
 import { TeamComposition } from './components/TeamComposition';
@@ -6,274 +6,203 @@ import { LayeredScores } from './components/LayeredScores';
 import { ReplacementTimeline } from './components/ReplacementTimeline';
 import { ExplainabilityLog } from './components/ExplainabilityLog';
 import { BenchmarkView } from './components/BenchmarkView';
-import { RunDetail, SpendStatus, DecisionRecord, ReplacementEvent, ScoreRecord } from './types';
-import { fetchRun, fetchDecisions, fetchSpend, cancelRun, subscribeToRunEvents } from './api';
+import {
+  BenchmarkSummary,
+  DecisionRecord,
+  ReplacementEvent,
+  RunDetail,
+  RunEventData,
+  ScoreRecord,
+  SpendStatus,
+} from './types';
+import {
+  cancelRun,
+  fetchDecisions,
+  fetchMetricsSummary,
+  fetchRun,
+  fetchSpend,
+  subscribeToRunEvents,
+} from './api';
 import { Activity, BarChart2 } from 'lucide-react';
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'run' | 'benchmark'>('run');
-  const [runIdInput, setRunIdInput] = useState<string>('01JRUN00000000000000000001');
-  const [currentRunId, setCurrentRunId] = useState<string>('01JRUN00000000000000000001');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isLiveConnected, setIsLiveConnected] = useState<boolean>(false);
+  const [runIdInput, setRunIdInput] = useState('');
+  const [currentRunId, setCurrentRunId] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [spendError, setSpendError] = useState<string | null>(null);
+  const [benchmarkSummary, setBenchmarkSummary] = useState<BenchmarkSummary | null>(null);
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
+  const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
 
-  // Core state
   const [run, setRun] = useState<RunDetail | null>(null);
   const [spend, setSpend] = useState<SpendStatus | null>(null);
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
   const [replacements, setReplacements] = useState<ReplacementEvent[]>([]);
   const [scores, setScores] = useState<ScoreRecord[]>([]);
-
-  // Default demo run data for offline viva demonstration
-  const loadDemoData = useCallback((runId: string) => {
-    const demoRun: RunDetail = {
-      run_id: runId,
-      benchmark_task_id: 'task_qa_042',
-      status: 'completed',
-      status_detail: 'Execution finished successfully under 4D budget constraints',
-      task_statement: 'Synthesize comparative clinical trial outcomes for SGLT2 inhibitors vs GLP-1 agonists in heart failure patients.',
-      complexity_tier: 'moderate',
-      arm: 'full',
-      seed: 1,
-      framework: 'langgraph',
-      config: {
-        config_id: 'cfg_01J999',
-        team_size: 3,
-        origin: 'tce',
-        topology: 'hub_and_spoke',
-        roles: [
-          { role_name: 'clinical_lead', model: 'gpt-4o-2024-11-20', temperature: 0.1, tools: ['search_pubmed', 'extract_tables'] },
-          { role_name: 'statistician', model: 'gpt-4o-mini-2024-07-18', temperature: 0.0, tools: ['calc_ci', 'verify_pvals'] },
-          { role_name: 'synthesizer', model: 'gpt-4o-mini-2024-07-18', temperature: 0.2, tools: ['format_markdown'] },
-        ],
-        justification: 'TCE predicted high domain complexity requiring specialized verifier and clinical lead roles.',
-      },
-      totals: {
-        tokens: 14820,
-        cost_usd: 0.0485,
-        wall_seconds: 12.45,
-        calls: 8,
-        supervision_tokens: 1850,
-        supervision_share: 0.125,
-      },
-      compliance: {
-        tokens: true,
-        cost: true,
-        wall: true,
-        calls: true,
-        all: true,
-      },
-      quality: {
-        composite: 0.892,
-      },
-      budget: {
-        max_tokens: 25000,
-        max_cost_usd: 0.12,
-        max_wall_seconds: 60,
-        max_calls: 15,
-      },
-      replacements: 1,
-      replacements_denied: 0,
-      final_output_ref: 'artifacts/01JRUN.md',
-      created_at: new Date(Date.now() - 360000).toISOString(),
-    };
-
-    const demoSpend: SpendStatus = {
-      cumulative_spend_usd: 42.15,
-      spend_ceiling_usd: 250.0,
-      kill_multiplier: 1.2,
-      hard_ceiling_usd: 300.0,
-      ceiling_breached: false,
-    };
-
-    const demoDecisions: DecisionRecord[] = [
-      {
-        decision_id: 'dec_01',
-        run_id: runId,
-        component: 'tce',
-        decision: 'Team Sized to 3 Agents',
-        inputs: { vocabulary_density: 0.74, sentence_depth: 4.2 },
-        justification: 'High syntactic and vocabulary density prompted 3-role allocation: clinical_lead, statistician, synthesizer.',
-        timestamp: new Date(Date.now() - 350000).toISOString(),
-      },
-      {
-        decision_id: 'dec_02',
-        run_id: runId,
-        component: 'rbe',
-        decision: 'Admission Approved (Call 1/15)',
-        inputs: { tokens: 1200, cost: 0.0035 },
-        justification: 'Projected consumption of 1,200 tokens is within the 25,000 budget ceiling.',
-        timestamp: new Date(Date.now() - 320000).toISOString(),
-      },
-      {
-        decision_id: 'dec_03',
-        run_id: runId,
-        component: 'rtpm',
-        decision: 'L1 Cosine Flag Raised',
-        inputs: { cosine_similarity: 0.61, threshold: 0.75 },
-        justification: 'Output embedding similarity to task prompt dropped below threshold (0.61 < 0.75); triggering L2 judge rubric.',
-        timestamp: new Date(Date.now() - 250000).toISOString(),
-      },
-      {
-        decision_id: 'dec_04',
-        run_id: runId,
-        component: 'replacement',
-        decision: 'Agent Swapped: synthesizer -> synthesizer_precise',
-        inputs: { previous_agent: 'synthesizer', candidate: 'synthesizer_precise' },
-        justification: 'Sustained low adherence in synthesizer. Swapped to precise template from ATL with context handoff.',
-        timestamp: new Date(Date.now() - 210000).toISOString(),
-      },
-    ];
-
-    const demoReplacements: ReplacementEvent[] = [
-      {
-        event_id: 'rep_01',
-        run_id: runId,
-        incumbent_agent: 'synthesizer',
-        replacement_candidate: 'synthesizer_precise',
-        trigger_reason: 'Two consecutive outputs below composite threshold 0.70',
-        outcome: 'executed',
-        justification: 'Agent Template Library (ATL) match found; handoff cost $0.004 within remaining margin.',
-        timestamp: new Date(Date.now() - 210000).toISOString(),
-      },
-    ];
-
-    const demoScores: ScoreRecord[] = [
-      {
-        score_id: 'sc_01',
-        output_id: 'out_001',
-        layer: 'l1_embed',
-        composite: 0.88,
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-      },
-      {
-        score_id: 'sc_02',
-        output_id: 'out_002',
-        layer: 'l1_embed',
-        composite: 0.61,
-        timestamp: new Date(Date.now() - 250000).toISOString(),
-      },
-      {
-        score_id: 'sc_03',
-        output_id: 'out_002',
-        layer: 'l2_judge',
-        composite: 0.64,
-        timestamp: new Date(Date.now() - 245000).toISOString(),
-      },
-      {
-        score_id: 'sc_04',
-        output_id: 'out_003',
-        layer: 'l3_verifier',
-        composite: 0.95,
-        timestamp: new Date(Date.now() - 190000).toISOString(),
-      },
-    ];
-
-    setRun(demoRun);
-    setSpend(demoSpend);
-    setDecisions(demoDecisions);
-    setReplacements(demoReplacements);
-    setScores(demoScores);
-  }, []);
+  const loadSequence = useRef(0);
 
   const loadRunData = useCallback(async (runId: string) => {
+    if (!runId) return;
+    const sequence = ++loadSequence.current;
     setIsLoading(true);
-    try {
-      const [runData, decisionsData, spendData] = await Promise.all([
-        fetchRun(runId).catch(() => null),
-        fetchDecisions(runId).catch(() => []),
-        fetchSpend().catch(() => null),
-      ]);
+    setRunError(null);
+    setSpendError(null);
+    setRun(null);
+    setDecisions([]);
+    setReplacements([]);
+    setScores([]);
+    const [runResult, decisionsResult, spendResult] = await Promise.allSettled([
+      fetchRun(runId),
+      fetchDecisions(runId),
+      fetchSpend(),
+    ]);
+    if (sequence !== loadSequence.current) return;
 
-      if (runData) {
-        setRun(runData);
-        setDecisions(decisionsData);
-        if (spendData) setSpend(spendData);
-      } else {
-        // Fallback to demo data
-        loadDemoData(runId);
-      }
-    } catch (err) {
-      console.warn('API unavailable or run not found; loading viva demonstration mode.');
-      loadDemoData(runId);
-    } finally {
-      setIsLoading(false);
+    if (runResult.status === 'fulfilled') {
+      setRun(runResult.value);
+    } else {
+      setRun(null);
+      setRunError(errorMessage(runResult.reason));
     }
-  }, [loadDemoData]);
 
-  // Initial load
+    if (decisionsResult.status === 'fulfilled') {
+      setDecisions(decisionsResult.value);
+    } else {
+      setDecisions([]);
+      setRunError((previous) =>
+        [previous, `Loading decisions: ${errorMessage(decisionsResult.reason)}`]
+          .filter(Boolean)
+          .join(' '),
+      );
+    }
+
+    if (spendResult.status === 'fulfilled') {
+      setSpend(spendResult.value);
+    } else {
+      setSpend(null);
+      setSpendError(errorMessage(spendResult.reason));
+    }
+
+    setIsLoading(false);
+  }, []);
+
   useEffect(() => {
-    loadRunData(currentRunId);
+    if (currentRunId) {
+      void loadRunData(currentRunId);
+    } else {
+      fetchSpend()
+        .then(setSpend)
+        .catch((error: unknown) => setSpendError(errorMessage(error)));
+    }
   }, [currentRunId, loadRunData]);
 
-  // SSE Subscription for live monitoring (FR-25)
   useEffect(() => {
     if (!currentRunId) return;
 
-    let unsubscribe: (() => void) | null = null;
-    try {
-      unsubscribe = subscribeToRunEvents(
-        currentRunId,
-        (type, data) => {
-          setIsLiveConnected(true);
-          if (type === 'budget_event') {
-            setDecisions((prev) => [
-              {
-                decision_id: data.event_id || `dec_${Date.now()}`,
-                run_id: currentRunId,
-                component: 'rbe',
-                decision: `Budget Action: ${data.action} (${data.dimension})`,
-                inputs: data,
-                justification: data.justification || 'Enforcing budget limit',
-                timestamp: new Date().toISOString(),
-              },
-              ...prev,
-            ]);
-          } else if (type === 'replacement') {
-            setReplacements((prev) => [
-              {
-                event_id: data.event_id || `rep_${Date.now()}`,
-                run_id: currentRunId,
-                outcome: data.outcome || 'executed',
-                justification: data.justification || 'Dynamic agent substitution',
-                timestamp: new Date().toISOString(),
-              },
-              ...prev,
-            ]);
-          } else if (type === 'score_computed') {
-            setScores((prev) => [
-              {
-                score_id: data.score_id || `sc_${Date.now()}`,
-                layer: data.layer || 'l1_embed',
-                composite: data.composite || 0,
-                timestamp: new Date().toISOString(),
-              },
-              ...prev,
-            ]);
-          } else if (type === 'run_completed') {
-            setRun((prev) => (prev ? { ...prev, status: data.status } : null));
-          }
-        },
-        () => {
+    return subscribeToRunEvents(
+      currentRunId,
+      (type, data: RunEventData) => {
+        setIsLiveConnected(true);
+        if (type === 'budget_event') {
+          setDecisions((previous) => [
+            {
+              decision_id: data.event_id || `dec_${Date.now()}`,
+              run_id: currentRunId,
+              component: 'rbe',
+              decision: `Budget Action: ${data.action ?? 'unknown'} (${data.dimension ?? 'unknown'})`,
+              inputs: data,
+              justification: data.justification || 'Budget event recorded.',
+              ts: new Date().toISOString(),
+            },
+            ...previous,
+          ]);
+        } else if (type === 'replacement' || type === 'replacement_denied') {
+          setReplacements((previous) => [
+            {
+              event_id: data.event_id || `rep_${Date.now()}`,
+              run_id: currentRunId,
+              incumbent_agent: data.incumbent_agent,
+              replacement_candidate: data.replacement_candidate,
+              trigger_reason: data.trigger_reason,
+              outcome: data.outcome || (type === 'replacement_denied' ? 'denied_adapter' : 'executed'),
+              justification: data.justification || 'No justification was provided.',
+              timestamp: new Date().toISOString(),
+            },
+            ...previous,
+          ]);
+        } else if (type === 'score_computed' && data.layer) {
+          const layer = data.layer;
+          setScores((previous) => [
+            {
+              score_id: data.score_id || `sc_${Date.now()}`,
+              output_id: data.output_id,
+              layer,
+              composite: data.composite ?? null,
+              timestamp: new Date().toISOString(),
+            },
+            ...previous,
+          ]);
+        } else if (type === 'run_completed') {
           setIsLiveConnected(false);
+          if (data.status) {
+            setRun((previous) => (previous ? { ...previous, status: data.status! } : null));
+          }
+          void loadRunData(currentRunId);
         }
-      );
-    } catch (err) {
-      setIsLiveConnected(false);
-    }
+      },
+      (error) => {
+        setIsLiveConnected(false);
+        setRunError(`Run event stream: ${error.message}`);
+      },
+      () => setIsLiveConnected(true),
+    );
+  }, [currentRunId, loadRunData]);
+
+  useEffect(() => {
+    if (activeTab !== 'benchmark') return;
+
+    let active = true;
+    setBenchmarkLoading(true);
+    setBenchmarkError(null);
+    fetchMetricsSummary()
+      .then((summary) => {
+        if (active) setBenchmarkSummary(summary);
+      })
+      .catch((error: unknown) => {
+        if (active) setBenchmarkError(errorMessage(error));
+      })
+      .finally(() => {
+        if (active) setBenchmarkLoading(false);
+      });
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      active = false;
     };
-  }, [currentRunId]);
+  }, [activeTab]);
 
   const handleCancelRun = async () => {
     if (!currentRunId) return;
+    setRunError(null);
     try {
       await cancelRun(currentRunId);
-      setRun((prev) => (prev ? { ...prev, status: 'cancelled' } : null));
-    } catch (err) {
-      console.error('Cancel failed', err);
+      setRun((previous) => (previous ? { ...previous, status: 'cancelled' } : null));
+    } catch (error) {
+      setRunError(`Cancelling run: ${errorMessage(error)}`);
+    }
+  };
+
+  const handleLoadRun = (runId: string) => {
+    setRunIdInput(runId);
+    if (runId === currentRunId) {
+      void loadRunData(runId);
+    } else {
+      setCurrentRunId(runId);
     }
   };
 
@@ -284,16 +213,12 @@ export const App: React.FC = () => {
         spend={spend}
         runIdInput={runIdInput}
         setRunIdInput={setRunIdInput}
-        onLoadRun={(id) => {
-          setCurrentRunId(id);
-          loadRunData(id);
-        }}
+        onLoadRun={handleLoadRun}
         onCancelRun={handleCancelRun}
         isLoading={isLoading}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 flex flex-col gap-6">
-        {/* Navigation Tabs */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
             <button
@@ -316,48 +241,58 @@ export const App: React.FC = () => {
               }`}
             >
               <BarChart2 className="w-4 h-4" />
-              <span>Ablation Matrix & Statistics</span>
+              <span>Ablation Matrix &amp; Statistics</span>
             </button>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                isLiveConnected ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'
-              }`}
-            />
-            <span>{isLiveConnected ? 'SSE Stream: Connected' : 'SSE Stream: Replay / Offline'}</span>
+            <span className={`h-2 w-2 rounded-full ${isLiveConnected ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
+            <span>{isLiveConnected ? 'Run event stream: Connected' : 'Run event stream: Disconnected'}</span>
           </div>
         </div>
 
         {activeTab === 'run' ? (
           <>
-            {run && (
+            {runError && (
+              <div role="alert" className="rounded-lg border border-rose-800 bg-rose-950/30 p-4 text-sm text-rose-300">
+                {runError}
+              </div>
+            )}
+            {spendError && (
+              <div role="alert" className="rounded-lg border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-300">
+                Global spend unavailable: {spendError}
+              </div>
+            )}
+            {run ? (
               <>
-                {/* 4D Budget Enforcement Gauges (FR-5) */}
                 <BudgetGauges run={run} />
-
-                {/* Team Composition & Task Metadata */}
                 <TeamComposition run={run} />
-
-                {/* Middle Grid: Layered Scores & Replacement Timeline */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <LayeredScores scores={scores} finalCompositeScore={run.quality?.composite || undefined} />
+                  <LayeredScores
+                    scores={scores}
+                    finalCompositeScore={run.quality?.composite ?? undefined}
+                  />
                   <ReplacementTimeline replacements={replacements} />
                 </div>
-
-                {/* Explainability & Audit Log (FR-24) */}
                 <ExplainabilityLog decisions={decisions} />
               </>
+            ) : (
+              <div className="rounded-xl border border-slate-800 bg-[#131B2E] p-8 text-center text-sm text-slate-400">
+                {isLoading ? 'Loading run…' : 'Enter a run ID above to load its live status and audit data.'}
+              </div>
             )}
           </>
         ) : (
-          <BenchmarkView />
+          <BenchmarkView
+            summary={benchmarkSummary}
+            isLoading={benchmarkLoading}
+            error={benchmarkError}
+          />
         )}
       </main>
 
       <footer className="border-t border-slate-900 bg-[#0B0F19] px-6 py-4 text-center text-xs text-slate-500 font-mono">
-        OASIS Dynamic Supervisory Layer • Strict 4D Budget Enforcement • Provable Replay Purity
+        OASIS Dynamic Supervisory Layer • Four-Dimension Budget Monitoring • Replay-Aware Evaluation
       </footer>
     </div>
   );

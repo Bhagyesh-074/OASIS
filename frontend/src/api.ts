@@ -1,113 +1,101 @@
-import { RunDetail, DecisionRecord, SpendStatus } from './types';
+import { BenchmarkSummary, DecisionRecord, RunDetail, RunEventData, SpendStatus } from './types';
 
 const API_BASE = ''; // Relative path, handled by Vite proxy in dev or Nginx in docker
+const API_KEY = import.meta.env.VITE_OASIS_API_KEY || 'dev-local-key';
+const API_HEADERS = { 'X-API-Key': API_KEY };
+
+async function assertOk(res: Response, action: string): Promise<void> {
+  if (!res.ok) {
+    throw new Error(`${action} failed (${res.status}${res.statusText ? ` ${res.statusText}` : ''})`);
+  }
+}
 
 export async function fetchRun(runId: string): Promise<RunDetail> {
   const res = await fetch(`${API_BASE}/v1/runs/${runId}`, {
-    headers: {
-      'X-API-Key': 'oasis-dev-key',
-    },
+    headers: API_HEADERS,
   });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch run: ${res.statusText}`);
-  }
+  await assertOk(res, 'Fetching run');
   return res.json();
 }
 
 export async function fetchDecisions(runId: string): Promise<DecisionRecord[]> {
   const res = await fetch(`${API_BASE}/v1/runs/${runId}/decisions`, {
-    headers: {
-      'X-API-Key': 'oasis-dev-key',
-    },
+    headers: API_HEADERS,
   });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch decisions: ${res.statusText}`);
-  }
+  await assertOk(res, 'Fetching decisions');
   const data = await res.json();
-  return data.decisions || [];
+  return data.decisions;
 }
 
 export async function fetchSpend(): Promise<SpendStatus> {
   const res = await fetch(`${API_BASE}/v1/spend`, {
-    headers: {
-      'X-API-Key': 'oasis-dev-key',
-    },
+    headers: API_HEADERS,
   });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch spend: ${res.statusText}`);
-  }
+  await assertOk(res, 'Fetching spend');
+  return res.json();
+}
+
+export async function fetchMetricsSummary(): Promise<BenchmarkSummary> {
+  const res = await fetch(`${API_BASE}/v1/metrics/summary`, {
+    headers: API_HEADERS,
+  });
+  await assertOk(res, 'Fetching benchmark summary');
   return res.json();
 }
 
 export async function cancelRun(runId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/v1/runs/${runId}/cancel`, {
     method: 'POST',
-    headers: {
-      'X-API-Key': 'oasis-dev-key',
-    },
+    headers: API_HEADERS,
   });
-  if (!res.ok) {
-    throw new Error(`Failed to cancel run: ${res.statusText}`);
-  }
+  await assertOk(res, 'Cancelling run');
 }
 
 export function subscribeToRunEvents(
   runId: string,
-  onEvent: (type: string, data: any) => void,
-  onError?: (err: any) => void
+  onEvent: (type: string, data: RunEventData) => void,
+  onError?: (err: Error) => void,
+  onConnected?: () => void
 ): () => void {
-  const eventSource = new EventSource(`${API_BASE}/v1/runs/${runId}/events`);
-
-  eventSource.addEventListener('budget_event', (e) => {
+  const controller = new AbortController();
+  void (async () => {
     try {
-      const data = JSON.parse(e.data);
-      onEvent('budget_event', data);
+      const res = await fetch(`${API_BASE}/v1/runs/${runId}/events`, {
+        headers: { ...API_HEADERS, Accept: 'text/event-stream' },
+        signal: controller.signal,
+      });
+      await assertOk(res, 'Connecting to run event stream');
+      if (!res.body) throw new Error('Run event stream response has no body');
+      onConnected?.();
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let separator = /\r?\n\r?\n/.exec(buffer);
+        while (separator) {
+          const block = buffer.slice(0, separator.index);
+          buffer = buffer.slice(separator.index + separator[0].length);
+          const lines = block.split(/\r?\n/);
+          const eventType = lines.find((line) => line.startsWith('event:'))?.slice(6).trim() || 'message';
+          const data = lines
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n');
+          if (data) onEvent(eventType, JSON.parse(data));
+          separator = /\r?\n\r?\n/.exec(buffer);
+        }
+      }
     } catch (err) {
-      console.error('Error parsing budget_event', err);
+      if (!controller.signal.aborted) {
+        onError?.(err instanceof Error ? err : new Error(String(err)));
+      }
     }
-  });
+  })();
 
-  eventSource.addEventListener('replacement', (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onEvent('replacement', data);
-    } catch (err) {
-      console.error('Error parsing replacement event', err);
-    }
-  });
-
-  eventSource.addEventListener('score_computed', (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onEvent('score_computed', data);
-    } catch (err) {
-      console.error('Error parsing score_computed event', err);
-    }
-  });
-
-  eventSource.addEventListener('run_completed', (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onEvent('run_completed', data);
-    } catch (err) {
-      console.error('Error parsing run_completed event', err);
-    }
-  });
-
-  eventSource.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onEvent('message', data);
-    } catch (err) {
-      // heartbeats or plaintext
-    }
-  };
-
-  eventSource.onerror = (err) => {
-    if (onError) onError(err);
-  };
-
-  return () => {
-    eventSource.close();
-  };
+  return () => controller.abort();
 }

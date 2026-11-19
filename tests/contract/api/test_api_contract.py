@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from oasis.api.app import create_app
 from oasis.db.migrate import apply_migrations
+from oasis.db.models import Database, TaskRecord
 
 AUTH_HEADER = {"X-API-Key": "dev-local-key"}
 
@@ -113,6 +115,28 @@ class TestBudgetAndPlanningContract:
 class TestRunLifecycleContract:
     """Run initiation, retrieval, decisions, and cancellation."""
 
+    @pytest.mark.parametrize("arm", ["unknown_arm", "oracle"])
+    def test_run_rejects_unknown_and_unimplemented_arms(
+        self, client: TestClient, arm: str
+    ) -> None:
+        response = client.post(
+            "/v1/runs",
+            json={
+                "statement": "Solve arithmetic reasoning",
+                "domain": "quant_analysis",
+                "budget": {
+                    "max_tokens": 20000,
+                    "max_cost_usd": 0.1,
+                    "max_wall_seconds": 60,
+                    "max_calls": 10,
+                },
+                "arm": arm,
+            },
+            headers=AUTH_HEADER,
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+
     def test_create_run_returns_202_accepted(self, client: TestClient) -> None:
         """POST /v1/runs returns 202 with run_id and events_url."""
         payload = {
@@ -142,9 +166,11 @@ class TestRunLifecycleContract:
         assert detail_resp.status_code == 200
         detail = detail_resp.json()
         assert detail["run_id"] == run_id
-        assert detail["status"] == "queued"
+        assert detail["status"] == "failed"
+        assert "not implemented" in detail["status_detail"]
         assert "compliance" in detail
         assert "totals" in detail
+        assert detail["budget"] == payload["budget"]
 
         # GET /v1/runs/{run_id}/decisions
         dec_resp = client.get(f"/v1/runs/{run_id}/decisions", headers=AUTH_HEADER)
@@ -155,6 +181,36 @@ class TestRunLifecycleContract:
         cancel_resp = client.post(f"/v1/runs/{run_id}/cancel", headers=AUTH_HEADER)
         assert cancel_resp.status_code == 200
         assert cancel_resp.json()["status"] == "cancelled"
+
+    def test_background_run_exception_is_reported_as_failed(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from oasis.eval.runner import BenchmarkRunner
+
+        async def fail_run(*args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("provider failure")
+
+        monkeypatch.setattr(BenchmarkRunner, "run_task", fail_run)
+        response = client.post(
+            "/v1/runs",
+            json={
+                "statement": "Solve arithmetic reasoning",
+                "domain": "quant_analysis",
+                "budget": {
+                    "max_tokens": 20000,
+                    "max_cost_usd": 0.1,
+                    "max_wall_seconds": 60,
+                    "max_calls": 10,
+                },
+                "arm": "rbe_only",
+            },
+            headers=AUTH_HEADER,
+        )
+        run_id = response.json()["run_id"]
+
+        detail = client.get(f"/v1/runs/{run_id}", headers=AUTH_HEADER).json()
+        assert detail["status"] == "failed"
+        assert detail["status_detail"] == "execution_error: RuntimeError"
 
     def test_get_nonexistent_run_returns_404(self, client: TestClient) -> None:
         """Querying a missing run returns 404 with run_not_found code."""
@@ -197,6 +253,15 @@ class TestOpsAndBenchmarkContract:
 
     def test_benchmark_job_submission(self, client: TestClient) -> None:
         """POST /v1/benchmark/jobs and GET /v1/metrics/summary."""
+        Database().insert_task(
+            TaskRecord(
+                task_id="benchmark_task",
+                domain="code_generation",
+                source="mbpp",
+                statement="Write a sorting function",
+                split="eval",
+            )
+        )
         job_payload = {
             "name": "test-ablation-job",
             "task_split": "eval",
@@ -210,7 +275,69 @@ class TestOpsAndBenchmarkContract:
         assert "job_id" in data
         assert data["status"] == "queued"
 
+        job_resp = client.get(
+            f"/v1/benchmark/jobs/{data['job_id']}",
+            headers=AUTH_HEADER,
+        )
+        assert job_resp.status_code == 200
+        job = job_resp.json()
+        assert job["status"] == "failed"
+        assert "not implemented" in job["status_detail"]
+
         # Check metrics summary
         summary_resp = client.get("/v1/metrics/summary", headers=AUTH_HEADER)
         assert summary_resp.status_code == 200
         assert "arms" in summary_resp.json()
+
+    def test_benchmark_job_requires_tasks_for_requested_split(
+        self, client: TestClient
+    ) -> None:
+        """Do not invent a task count when the requested split is empty."""
+        resp = client.post(
+            "/v1/benchmark/jobs",
+            json={
+                "name": "empty-split",
+                "task_split": "eval",
+                "arms": ["vanilla_fixed"],
+                "seeds": [1],
+            },
+            headers=AUTH_HEADER,
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
+
+    def test_background_benchmark_exception_is_reported_as_failed(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from oasis.eval.runner import BenchmarkRunner
+
+        Database().insert_task(
+            TaskRecord(
+                task_id="benchmark_failure_task",
+                domain="code_generation",
+                source="mbpp",
+                statement="Write a sorting function",
+                split="eval",
+            )
+        )
+
+        async def fail_matrix(*args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("runner failure")
+
+        monkeypatch.setattr(BenchmarkRunner, "run_matrix", fail_matrix)
+        response = client.post(
+            "/v1/benchmark/jobs",
+            json={
+                "name": "failing-job",
+                "task_split": "eval",
+                "arms": ["vanilla_fixed"],
+                "seeds": [1],
+            },
+            headers=AUTH_HEADER,
+        )
+        job_id = response.json()["job_id"]
+
+        job = client.get(f"/v1/benchmark/jobs/{job_id}", headers=AUTH_HEADER).json()
+        assert job["status"] == "failed"
+        assert job["failed_runs"] == 1
+        assert job["status_detail"] == "execution_error: RuntimeError"

@@ -220,6 +220,8 @@ class RunCreateRequest(BaseModel):
     def validate_arm(cls, v: str) -> str:
         if v not in VALID_ARMS:
             raise ValueError(f"Invalid arm: {v}. Must be one of {VALID_ARMS}")
+        if v == "oracle":
+            raise ValueError("The oracle arm requires the unimplemented oracle sweep")
         return v
 
 
@@ -274,6 +276,7 @@ class RunDetailResponse(BaseModel):
     seed: int
     framework: str
     config: TeamConfigModel | None = None
+    budget: BudgetModel | None = None
     totals: RunTotalsModel
     compliance: RunComplianceModel
     quality: RunQualityModel
@@ -338,11 +341,20 @@ class BenchmarkJobRequest(BaseModel):
 
     name: str
     task_split: Literal["calibration", "eval"] = "eval"
-    arms: list[str] = Field(default_factory=lambda: list(VALID_ARMS[:-1]))
-    seeds: list[int] = Field(default_factory=lambda: [1, 2, 3])
+    arms: list[str] = Field(default_factory=lambda: list(VALID_ARMS[:-1]), min_length=1)
+    seeds: list[int] = Field(default_factory=lambda: [1, 2, 3], min_length=1)
     budget_profile: Literal["tight", "moderate", "generous"] = "moderate"
-    concurrency: int = 8
+    concurrency: int = Field(default=8, ge=1)
     mode: Literal["live", "replay"] = "live"
+
+    @field_validator("arms")
+    @classmethod
+    def validate_arms(cls, value: list[str]) -> list[str]:
+        supported_names = set(VALID_ARMS[:-1])
+        unknown = set(value) - supported_names
+        if unknown:
+            raise ValueError(f"Invalid benchmark arm(s): {sorted(unknown)}")
+        return value
 
 
 class BenchmarkJobResponse(BaseModel):
@@ -351,6 +363,7 @@ class BenchmarkJobResponse(BaseModel):
     job_id: str = Field(default_factory=lambda: str(ulid.ULID()))
     name: str
     status: Literal["queued", "running", "completed", "failed"] = "queued"
+    status_detail: str | None = None
     total_runs: int
     completed_runs: int = 0
     failed_runs: int = 0
