@@ -1,11 +1,13 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 
 const runId = '01JRUN00000000000000000001';
 
 const runResponse = {
   run_id: runId,
+  task_id: 'task_42',
+  task_statement: 'Synthesize recent results and report the key differences.',
   status: 'completed',
   arm: 'full',
   config: {
@@ -74,6 +76,11 @@ const benchmarkSummary = {
 };
 
 describe('OASIS React Dashboard (FR-25)', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
@@ -133,22 +140,23 @@ describe('OASIS React Dashboard (FR-25)', () => {
     render(<App />);
 
     expect(screen.getByText('OASIS')).toBeInTheDocument();
-    expect(screen.getByText('Dynamic Supervisory Layer for Multi-Agent LLMs')).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText(/Run ID/), { target: { value: runId } });
-    fireEvent.click(screen.getByRole('button', { name: /Load/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Run ID to inspect' }), { target: { value: runId } });
+    fireEvent.click(screen.getByRole('button', { name: /Inspect run/ }));
 
-    expect(await screen.findByText(/4D Real-Time Budget Enforcement/i)).toBeInTheDocument();
-    expect(screen.getByText(/25,000/)).toBeInTheDocument();
+    expect(await screen.findByText('Run overview')).toBeInTheDocument();
+    expect(screen.getByText('Resource guardrails')).toBeInTheDocument();
+    expect(screen.getAllByText(/25,000/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Synthesize recent results and report the key differences.').length).toBeGreaterThan(0);
     expect(await screen.findByText(/Explainability & Decision Audit Log/i)).toBeInTheDocument();
     expect(screen.getByText('researcher')).toBeInTheDocument();
   });
 
   it('displays API benchmark summaries instead of hardcoded benchmark results', async () => {
     render(<App />);
-    fireEvent.click(screen.getByText('Ablation Matrix & Statistics'));
+    fireEvent.click(screen.getByText('Benchmark analysis'));
 
-    expect(await screen.findByText('Benchmark Results')).toBeInTheDocument();
-    expect(screen.getByText('OASIS Full')).toBeInTheDocument();
+    expect(await screen.findByText('Experimental arms')).toBeInTheDocument();
+    expect(screen.getAllByText('OASIS Full').length).toBeGreaterThan(0);
     expect(screen.getByText('Vanilla Fixed')).toBeInTheDocument();
     expect(screen.getByText('50.0%')).toBeInTheDocument();
     expect(screen.queryByText('0.882')).not.toBeInTheDocument();
@@ -180,10 +188,10 @@ describe('OASIS React Dashboard (FR-25)', () => {
       }),
     );
     render(<App />);
-    fireEvent.change(screen.getByPlaceholderText(/Run ID/), { target: { value: runId } });
-    fireEvent.click(screen.getByRole('button', { name: /Load/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Run ID to inspect' }), { target: { value: runId } });
+    fireEvent.click(screen.getByRole('button', { name: /Inspect run/ }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/Fetching run failed \(404/);
-    await waitFor(() => expect(screen.queryByText(/4D Real-Time Budget Enforcement/)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Run overview')).not.toBeInTheDocument());
   });
 });

@@ -268,6 +268,8 @@ class RunDetailResponse(BaseModel):
     """Detailed run state (GET /v1/runs/{id})."""
 
     run_id: str
+    task_id: str | None = None
+    task_statement: str | None = None
     status: Literal[
         "queued", "running", "completed", "halted_budget", "failed", "cancelled"
     ]
