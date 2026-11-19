@@ -1,1 +1,1 @@
-"""Integration tests for benchmark runner and matrix execution."""
+"""Integration tests for benchmark runner, matrix execution, and oracle sweep evaluation."""

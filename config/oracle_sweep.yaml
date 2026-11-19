@@ -1,0 +1,16 @@
+# Oracle team-size sweep configuration (FR-27, ADR-011, FR-3, NFR-3)
+# DB CHECK constraint: k BETWEEN 1 AND 5 (docs/DATABASE.md)
+k_values:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+seeds:
+  - 1
+  - 2
+  - 3
+tolerance: 0.03
+tranche_size: 10
+concurrency: 4
+max_retries: 2
